@@ -1,25 +1,37 @@
 import { retry } from '../infra/retry.js';
 
 const HOUR = 3_600_000;
+const DAY = 24 * HOUR;
+const HISTORY_CHUNK_MS = 6 * HOUR;
 
 /**
- * Pulls data from the provider into the store.
+ * Pulls data from the provider into the store, batch by batch.
  *
- * Every upstream call goes through the same policy stack:
- *   singleFlight (coalesce) -> circuitBreaker (fail fast) -> retry (backoff+jitter) -> provider
+ * Three lanes share one adaptive pacer (see infra/adaptivePacer.js):
  *
- * Records are synced incrementally with a high-water mark. Each poll
- * re-reads a small overlap window so late-arriving records are caught;
- * duplicates are removed by the store's primary-key index.
+ *   live       every poll reads [watermark - overlap, now]. On a cold start
+ *              it reads only the last hour, so the dashboard has numbers
+ *              within seconds instead of after a multi-day download.
+ *   backfill   walks backwards from that point, one small chunk per step,
+ *              newest first, until it reaches the retention target. Each
+ *              upstream page is ingested the moment it arrives.
+ *   history    once the backfill is done, fills monthly rollups for older
+ *              months, one chunk per step (lowest priority).
+ *
+ * A throttle or failure only costs the current page: everything already
+ * ingested stays, cursors only move after a chunk completes, and the store's
+ * primary-key index de-duplicates anything that gets re-read.
  */
 export class BillingSync {
   constructor({ provider, store, breaker, flight, bus, logger, config, rollups }) {
     Object.assign(this, { provider, store, breaker, flight, bus, logger, config, rollups });
     this.watermark = null;
+    this.backfill = null;
     this.retries = 0;
     this.lastSync = { balance: 0, records: 0, groups: 0 };
   }
 
+  /** Cheap single calls (balance, groups): coalesce + breaker + retry. */
   #guarded(key, fn) {
     return this.flight.do(key, () =>
       this.breaker.exec(() =>
@@ -32,6 +44,11 @@ export class BillingSync {
         }),
       ),
     );
+  }
+
+  /** Record streams retry per request inside the client, so no outer retry here. */
+  #streamed(key, fn) {
+    return this.flight.do(key, () => this.breaker.exec(fn));
   }
 
   async syncGroups() {
@@ -80,45 +97,132 @@ export class BillingSync {
     }
   }
 
-  async syncRecords() {
-    const now = Date.now();
-    const since = this.watermark === null
-      ? now - this.config.telnyx.backfillDays * 24 * HOUR
-      : this.watermark - this.config.poll.overlapMs;
-
-    const batch = await this.#guarded('records', () =>
-      this.provider.listDetailRecords({ since, until: now }),
-    );
-    if (this.rollups && this.rollups.meta.liveFrom === null) this.rollups.meta.liveFrom = since;
-    const added = this.store.ingest(batch, now);
-    this.rollups?.addLive(added);
-    for (const r of batch) if (this.watermark === null || r.ts > this.watermark) this.watermark = r.ts;
-    if (this.watermark === null) this.watermark = since; // empty account: still advance
-
-    this.store.evict(now);
-    this.store.tick(now);
-    this.lastSync.records = Date.now();
-
-    if (added.length) {
+  /** Stream [since, until) into the store page by page. */
+  async #ingestRange({ since, until, live }) {
+    let added = 0;
+    for await (const batch of this.provider.recordBatches({ since, until })) {
+      const now = Date.now();
+      const fresh = this.store.ingest(batch, now);
+      this.rollups?.addLive(fresh);
+      if (!fresh.length) continue;
+      added += fresh.length;
       let cost = 0;
-      for (const r of added) cost += r.cost;
+      for (const r of fresh) cost += r.cost;
       this.bus.publish('records', {
-        added: added.length,
+        added: fresh.length,
         cost,
-        latest: added.slice(-12).reverse().map((r) => this.store.present(r)),
+        backfill: !live,
+        // Only genuinely new activity goes on the ticker tape.
+        latest: live ? fresh.slice(-12).reverse().map((r) => this.store.present(r)) : [],
       });
     }
-    return added.length;
+    return added;
+  }
+
+  /** Live lane: the newest records. Cold start reads only a short head. */
+  async syncRecords() {
+    return this.#streamed('records', async () => {
+      const now = Date.now();
+      const cold = this.watermark === null;
+      const since = cold ? now - this.config.sync.liveHeadMs : this.watermark - this.config.poll.overlapMs;
+      if (cold) this.#planBackfill(since, now);
+
+      const added = await this.#ingestRange({ since, until: now, live: true });
+      // Advance only after the whole window succeeded; a failed poll re-reads it.
+      this.watermark = now;
+      this.rollups?.markCovered(since, now);
+      this.store.evict(now);
+      this.store.tick(now);
+      this.lastSync.records = Date.now();
+      this.bus.publish('sync', this.progress());
+      return added;
+    });
   }
 
   /**
-   * Startup: groups first (so search tokens include group names), then
-   * the record backfill, then balance. Failures here are logged, not fatal —
-   * the scheduler keeps retrying with backoff.
+   * Decide how far back to fill: the configured backfill window, extended
+   * over any downtime since the rollups were last counted (bounded by the
+   * store's retention).
+   */
+  #planBackfill(headStart, now) {
+    const raw = now - this.config.telnyx.backfillDays * DAY;
+    const floor = now - this.config.retentionDays * DAY + HOUR;
+    const lastCounted = this.rollups?.bootHighWater || 0;
+    const target = Math.max(floor, lastCounted > 0 ? Math.min(raw, lastCounted) : raw);
+    this.backfill = {
+      from: headStart, target, cursor: headStart, done: target >= headStart,
+      chunks: 0, startedAt: now, finishedAt: null,
+    };
+    if (this.rollups) this.rollups.meta.liveFrom = target;
+    this.logger.info('backfill planned', { from: new Date(target).toISOString(), to: new Date(headStart).toISOString() });
+  }
+
+  /** Backfill lane: one chunk, newest first. Called repeatedly by the scheduler. */
+  async backfillStep() {
+    const b = this.backfill;
+    if (!b || b.done) return false;
+    return this.#streamed('backfill', async () => {
+      const until = b.cursor;
+      const since = Math.max(b.target, until - this.config.sync.chunkMs);
+      await this.#ingestRange({ since, until, live: false });
+      b.cursor = since;
+      b.chunks++;
+      this.rollups?.markCovered(since, until);
+      if (since <= b.target) {
+        b.done = true;
+        b.finishedAt = Date.now();
+        this.rollups?.flush();
+        this.logger.info('backfill complete', { chunks: b.chunks, records: this.store.records.length, ms: b.finishedAt - b.startedAt });
+      }
+      this.bus.publish('sync', this.progress());
+      return true;
+    });
+  }
+
+  /**
+   * History lane (monthly reports): from the start of (current month − N)
+   * up to the backfill target, one 6-hour chunk per step, feeding only the
+   * rollups. A chunk is buffered and committed whole, so a failure mid-way
+   * never half-counts it. Progress persists in meta.historyDoneThrough.
+   */
+  async historyStep() {
+    const R = this.rollups;
+    if (!R || !this.backfill?.done) return false;
+    const d = new Date();
+    const start = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - this.config.reports.historyMonths, 1);
+    if (R.meta.historyFrom === null || start < R.meta.historyFrom) {
+      R.meta.historyFrom = start;
+      R.meta.historyDoneThrough = start;
+    }
+    const end = this.backfill.target;
+    const cursor = Math.max(R.meta.historyDoneThrough ?? start, R.meta.historyFrom);
+    if (cursor >= end) {
+      if (R.backfill.running) { R.backfill = { ...R.backfill, running: false }; R.flush(); this.logger.info('history backfill complete', { months: R.months.size }); }
+      return false;
+    }
+    const until = Math.min(cursor + HISTORY_CHUNK_MS, end);
+    const total = Math.max(1, Math.ceil((end - R.meta.historyFrom) / DAY));
+    R.backfill = { running: true, done: Math.floor((cursor - R.meta.historyFrom) / DAY), total, month: new Date(cursor).toISOString().slice(0, 7) };
+
+    await this.#streamed('history', async () => {
+      const buf = [];
+      for await (const batch of this.provider.recordBatches({ since: cursor, until })) buf.push(...batch);
+      R.addHistory(buf);
+      R.markCovered(cursor, until - 1);
+      R.meta.historyDoneThrough = until;
+    });
+    R.backfill = { ...R.backfill, done: Math.floor((until - R.meta.historyFrom) / DAY) };
+    return true;
+  }
+
+  /**
+   * Startup: the cheap, high-value calls first (balance, groups), then a
+   * short live head of records. Everything older streams in afterwards.
+   * Failures are logged, not fatal: the scheduler keeps retrying.
    */
   async bootstrap() {
     const t0 = performance.now();
-    for (const [name, fn] of [['groups', () => this.syncGroups()], ['assistants', () => this.syncAssistants()], ['records', () => this.syncRecords()], ['balance', () => this.syncBalance()]]) {
+    for (const [name, fn] of [['balance', () => this.syncBalance()], ['groups', () => this.syncGroups()], ['assistants', () => this.syncAssistants()], ['records', () => this.syncRecords()]]) {
       try { await fn(); } catch (err) { this.logger.warn('bootstrap step failed', { step: name, err: err.message }); }
     }
     this.logger.info('bootstrap complete', {
@@ -128,46 +232,25 @@ export class BillingSync {
     });
   }
 
-  /**
-   * Monthly-report history: walk day by day from the start of
-   * (current month − N) up to the first live sync, feeding only the
-   * rollups (raw records are older than retention). Progress is persisted
-   * via meta.historyDoneThrough, so a restart resumes where it stopped.
-   */
-  async backfillHistory() {
+  /** What the UI shows: how far back data reaches and whether we're throttled. */
+  progress() {
+    const b = this.backfill;
+    const span = b ? b.from - b.target : 0;
     const R = this.rollups;
-    if (!R || R.meta.liveFrom === null) return;
-    const d = new Date();
-    const start = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - this.config.reports.historyMonths, 1);
-    if (R.meta.historyFrom === null || start < R.meta.historyFrom) {
-      R.meta.historyFrom = start;
-      R.meta.historyDoneThrough = start;
-    }
-    const end = R.meta.liveFrom;
-    let cursor = R.meta.historyDoneThrough;
-    if (cursor >= end) return;
-    const DAY = 24 * HOUR;
-    R.backfill = { running: true, done: 0, total: Math.ceil((end - cursor) / DAY), month: null };
-    this.logger.info('history backfill start', { from: new Date(cursor).toISOString(), to: new Date(end).toISOString() });
-    try {
-      while (cursor < end) {
-        const until = Math.min(cursor + DAY, end);
-        const batch = await this.#guarded(`history:${cursor}`, () => this.provider.listDetailRecords({ since: cursor, until }));
-        R.addHistory(batch);
-        cursor = until;
-        R.meta.historyDoneThrough = cursor;
-        R.backfill.done++;
-        R.backfill.month = new Date(cursor).toISOString().slice(0, 7);
-        await new Promise((r) => setImmediate(r)); // yield to request handling
-      }
-      R.flush();
-      this.logger.info('history backfill complete', { months: R.months.size });
-    } finally {
-      R.backfill.running = false;
-    }
+    return {
+      live: { watermark: this.watermark, lastSyncAt: this.lastSync.records || null },
+      backfill: b ? {
+        done: b.done,
+        coveredFrom: b.cursor,
+        target: b.target,
+        pct: span > 0 ? Math.min(1, (b.from - b.cursor) / span) : 1,
+      } : null,
+      history: R ? { ...R.backfill } : null,
+      throttle: this.provider.pacer?.stats?.() ?? null,
+    };
   }
 
   stats() {
-    return { watermark: this.watermark, retries: this.retries, lastSync: this.lastSync };
+    return { watermark: this.watermark, retries: this.retries, lastSync: this.lastSync, progress: this.progress() };
   }
 }

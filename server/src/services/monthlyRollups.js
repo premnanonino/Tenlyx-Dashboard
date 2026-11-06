@@ -11,12 +11,14 @@ import { SpaceSaving } from '../dsa/SpaceSaving.js';
  * both record eviction and process restarts.
  *
  * Exactly-once counting across restarts:
- *   meta.highWater  newest record ts ever counted (persisted)
- *   bootHighWater   highWater as loaded at startup
- * Live ingest only counts store-new records with ts > bootHighWater, so the
- * backfill that re-reads the last 30 days after a restart isn't double-counted.
- * History before the first live sync (meta.liveFrom) is filled separately,
- * one day at a time, and tracked by meta.historyDoneThrough.
+ *   meta.counted    time intervals [from, to] whose records are fully
+ *                   counted (persisted, merged as sync progresses)
+ *   bootCounted     those intervals as loaded at startup
+ * After a restart the store is empty and the recent backfill re-reads the
+ * last days; records inside a boot interval are skipped, so nothing is
+ * counted twice, while a downtime gap (outside every interval) is filled.
+ * History before meta.liveFrom is filled separately, chunk by chunk, and
+ * tracked by meta.historyDoneThrough.
  */
 const monthKey = (ts) => new Date(ts).toISOString().slice(0, 7);
 const dayKey = (ts) => new Date(ts).toISOString().slice(0, 10);
@@ -91,7 +93,8 @@ export class MonthlyRollups {
     this.file = file;
     this.logger = logger;
     this.months = new Map();
-    this.meta = { liveFrom: null, highWater: 0, historyFrom: null, historyDoneThrough: null };
+    this.meta = { liveFrom: null, highWater: 0, counted: [], historyFrom: null, historyDoneThrough: null };
+    this.bootCounted = [];
     this.bootHighWater = 0;
     this.dirty = false;
     this.version = 0;
@@ -107,7 +110,32 @@ export class MonthlyRollups {
     } catch (e) {
       if (e.code !== 'ENOENT') this.logger?.warn('rollup file unreadable, starting fresh', { err: e.message });
     }
+    // Files written before interval tracking counted [liveFrom, highWater].
+    if (!Array.isArray(this.meta.counted)) this.meta.counted = [];
+    if (!this.meta.counted.length && this.meta.highWater > 0) {
+      this.meta.counted = [[this.meta.liveFrom ?? 0, this.meta.highWater]];
+    }
+    this.bootCounted = this.meta.counted.map((iv) => [...iv]);
     this.bootHighWater = this.meta.highWater || 0;
+  }
+
+  #countedAtBoot(ts) {
+    for (const [a, b] of this.bootCounted) if (ts >= a && ts <= b) return true;
+    return false;
+  }
+
+  /** Record that every record in [from, to] has now been counted. */
+  markCovered(from, to) {
+    if (!(to >= from)) return;
+    const all = [...this.meta.counted, [from, to]].sort((x, y) => x[0] - y[0]);
+    const merged = [];
+    for (const iv of all) {
+      const last = merged[merged.length - 1];
+      if (last && iv[0] <= last[1] + 1) last[1] = Math.max(last[1], iv[1]);
+      else merged.push([...iv]);
+    }
+    this.meta.counted = merged;
+    this.dirty = true;
   }
 
   #month(ts) {
@@ -117,11 +145,11 @@ export class MonthlyRollups {
     return m;
   }
 
-  /** Records from live ingest (already de-duplicated by the store). */
+  /** Records from live polling or the recent backfill (already de-duplicated by the store). */
   addLive(records) {
     let n = 0;
     for (const r of records) {
-      if (r.ts <= this.bootHighWater) continue;
+      if (this.#countedAtBoot(r.ts)) continue;
       this.#month(r.ts).add(r);
       if (r.ts > this.meta.highWater) this.meta.highWater = r.ts;
       n++;
@@ -130,9 +158,14 @@ export class MonthlyRollups {
     return n;
   }
 
-  /** Records from the history backfill (strictly before meta.liveFrom). */
+  /** One committed history chunk (records outside every interval counted before this boot). */
   addHistory(records) {
-    for (const r of records) if (r.ts < this.meta.liveFrom) this.#month(r.ts).add(r);
+    const seen = new Set();
+    for (const r of records) {
+      if (this.#countedAtBoot(r.ts) || seen.has(r.id)) continue;
+      seen.add(r.id);
+      this.#month(r.ts).add(r);
+    }
     this.dirty = true;
     this.version++;
   }

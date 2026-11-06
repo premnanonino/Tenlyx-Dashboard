@@ -72,3 +72,25 @@ export function useDebounced(value, ms = 250) {
   }, [value, ms]);
   return v;
 }
+
+/**
+ * Lazy-load trigger. Returns [ref, seen, visible]: `seen` flips true the
+ * first time the element comes within `margin` of the viewport and stays
+ * true; `visible` tracks it live (for pausing polling off-screen).
+ */
+export function useInView(margin = '300px') {
+  const [el, setEl] = useState(null);
+  const [seen, setSeen] = useState(false);
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    if (!el) return undefined;
+    if (typeof IntersectionObserver === 'undefined') { setSeen(true); setVisible(true); return undefined; }
+    const io = new IntersectionObserver(([e]) => {
+      setVisible(e.isIntersecting);
+      if (e.isIntersecting) setSeen(true);
+    }, { rootMargin: `${margin} 0px` });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [el, margin]);
+  return [setEl, seen, visible];
+}

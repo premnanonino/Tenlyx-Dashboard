@@ -128,15 +128,17 @@ export function buildRouter(ctx) {
 
   // ---- operations -------------------------------------------------------
   // Manual refresh is expensive upstream: charge 10 tokens.
-  r.post('/sync', rateLimit(limiter, 10), async (req, res) => {
-    try {
-      const [added] = await Promise.all([sync.syncRecords(), sync.syncBalance()]);
-      alerts.evaluate();
-      res.json({ ok: true, added });
-    } catch (err) {
-      res.status(502).json({ ok: false, error: err.message, code: err.code });
-    }
+  // Manual refresh runs in the background (it may have to wait out a
+  // Telnyx rate limit); progress arrives over the live stream.
+  r.post('/sync', rateLimit(limiter, 10), (req, res) => {
+    const throttledForMs = ctx.provider.pacer?.coolingDownMs?.() ?? 0;
+    Promise.all([sync.syncRecords(), sync.syncBalance()])
+      .then(() => alerts.evaluate())
+      .catch((err) => ctx.logger?.warn('manual sync failed', { err: err.message }));
+    res.status(202).json({ ok: true, queued: true, throttledForMs });
   });
+
+  r.get('/sync/status', (req, res) => res.json(sync.progress()));
 
   r.get('/system', (req, res) => {
     const mem = process.memoryUsage();

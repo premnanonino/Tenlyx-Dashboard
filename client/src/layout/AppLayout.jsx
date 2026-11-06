@@ -4,7 +4,7 @@ import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-do
 import { api, useResource } from '../lib/api.js';
 import { useStream } from '../lib/stream.js';
 import { useNow } from '../lib/hooks.js';
-import { ago, utcTime } from '../lib/format.js';
+import { ago, utcDate, utcTime } from '../lib/format.js';
 import { TopProgress } from '../components/ui.jsx';
 import { ThemeToggle } from '../lib/theme.jsx';
 import { ErrorBoundary } from '../components/ErrorBoundary.jsx';
@@ -147,13 +147,22 @@ function Shell({ user, location }) {
     api('/records?range=24h&limit=16').then((r) => setTape((t) => (t.length ? t : r.rows))).catch(() => {});
   }, []);
 
+  // Sync progress: initial snapshot, then live updates over the stream.
+  const [syncSnap, setSyncSnap] = useState(null);
+  useEffect(() => { api('/sync/status').then(setSyncSnap).catch(() => {}); }, []);
+  const syncInfo = stream.sync ?? syncSnap;
+  const fill = syncInfo?.backfill;
+  const throttled = (syncInfo?.throttle?.coolingDownMs ?? 0) > 0
+    || (syncInfo?.throttle?.lastThrottleAt && now - syncInfo.throttle.lastThrottleAt < 60_000);
+
   const syncNow = async () => {
     setSyncing(true); setSyncMsg(null);
     try {
       const r = await api('/sync', { method: 'POST' });
-      setSyncMsg(`+${r.added} new`);
+      // Runs in the background; new rows stream in as they arrive.
+      setSyncMsg(r.throttledForMs > 0 ? `queued · ${Math.ceil(r.throttledForMs / 1000)}s` : 'syncing…');
     } catch (e) {
-      setSyncMsg(e.status === 429 ? 'slow down' : 'sync failed');
+      setSyncMsg(e.status === 429 ? 'slow down' : 'try again');
     } finally {
       setSyncing(false);
       setTimeout(() => setSyncMsg(null), 3000);
@@ -192,6 +201,13 @@ function Shell({ user, location }) {
             <NavLinks alerts={activeAlerts} />
             <div className="nav__right">
               <span className={`stream mono stream--${stream.status}`}><i />{streamLabel}</span>
+              {fill && !fill.done && (
+                <span className="fill mono" role="status" title="Older records load in the background, newest first">
+                  <span className="fill__bar" aria-hidden><i style={{ transform: `scaleX(${fill.pct})` }} /></span>
+                  {throttled ? 'pacing · ' : 'loading · '}back to {utcDate(fill.coveredFrom)}
+                </span>
+              )}
+              {fill?.done && throttled && <span className="fill mono" role="status">pacing requests</span>}
               <span className="mono clock">{utcTime(now)} UTC</span>
               <button type="button" className="btn" onClick={syncNow} disabled={syncing}>
                 {syncing ? <><span className="spin-square" /> Syncing</> : syncMsg || 'Sync now'}

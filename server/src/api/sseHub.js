@@ -1,4 +1,4 @@
-const FORWARDED = new Set(['balance', 'records', 'alert', 'breaker']);
+const FORWARDED = new Set(['balance', 'records', 'alert', 'breaker', 'sync']);
 const MAX_BUFFERED = 1 << 20; // 1 MiB — beyond this a client is too slow
 
 /**

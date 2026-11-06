@@ -29,13 +29,18 @@ export const config = Object.freeze({
     maxPages: num(process.env.TELNYX_MAX_PAGES, 200), // per time window
     pageSize: 50, // /detail_records caps page[size] at 50
     timeoutMs: num(process.env.TELNYX_TIMEOUT_MS, 10_000),
-    outboundRps: num(process.env.TELNYX_RPS, 5),
+    // Ceiling for the adaptive pacer; it starts lower and halves on every 429.
+    outboundRps: num(process.env.TELNYX_RPS, 2),
   }),
   poll: Object.freeze({
     balanceMs: num(process.env.POLL_BALANCE_MS, 30_000),
     recordsMs: num(process.env.POLL_RECORDS_MS, 60_000),
     groupsMs: num(process.env.POLL_GROUPS_MS, 10 * 60_000),
     overlapMs: num(process.env.POLL_OVERLAP_MS, 30 * 60_000), // re-read window: call legs land only after hang-up
+  }),
+  sync: Object.freeze({
+    liveHeadMs: num(process.env.SYNC_LIVE_HEAD_MS, 60 * 60_000), // cold start: newest hour first
+    chunkMs: num(process.env.SYNC_CHUNK_MS, 60 * 60_000),        // backfill step size
   }),
   retentionDays: 35,
   reports: Object.freeze({

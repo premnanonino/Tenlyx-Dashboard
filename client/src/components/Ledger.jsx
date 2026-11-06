@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
-import { useDebounced } from '../lib/hooks.js';
+import { useDebounced, useInView } from '../lib/hooks.js';
 import { money, moneySmart, num, productColor, productLabel, shortModel, utcDate, utcTime } from '../lib/format.js';
 import { SkeletonRows, Tabs } from './ui.jsx';
 import { rangeLabel, rangeQuery } from './RangePicker.jsx';
@@ -88,11 +88,20 @@ export default function Ledger({ tick, currency, range }) {
     try {
       const r = await api(`/records?${params(last.nextBefore)}`);
       setExtra((x) => [...x, r]);
+    } catch (e) {
+      setError(e); // stops infinite scroll until the next refresh
     } finally { setMore(false); }
   };
 
   const rows = result ? [...result.rows, ...extra.flatMap((x) => x.rows)] : [];
   const tail = extra.length ? extra[extra.length - 1] : result;
+
+  // Infinite scroll: fetch the next page when the end of the table nears the viewport.
+  const [endRef, , endVisible] = useInView('400px');
+  useEffect(() => {
+    if (endVisible && tail?.nextBefore && !more && !error) loadMore();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [endVisible, tail?.nextBefore, more]);
 
   return (
     <div className="ledger">
@@ -186,6 +195,7 @@ export default function Ledger({ tick, currency, range }) {
         </div>
       )}
 
+      <div ref={endRef} aria-hidden />
       {tail?.nextBefore && (
         <button type="button" className="btn btn--ghost ledger__more" onClick={loadMore} disabled={more}>
           {more ? <><span className="spin-square" /> Loading older records</> : `Load older · ${num(result.total - rows.length)} more`}

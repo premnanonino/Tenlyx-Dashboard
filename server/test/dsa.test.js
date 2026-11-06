@@ -161,13 +161,43 @@ test('MonthlyRollups counts once across restarts', async () => {
   const a = new MonthlyRollups({ file });
   a.load();
   a.addLive([rec('1', t, 2), rec('2', t + 1000, 3)]);
+  a.markCovered(t, t + 1000); // the sync marks a window once it is fully read
   a.flush();
   const b = new MonthlyRollups({ file });
   b.load();
   b.addLive([rec('1', t, 2), rec('2', t + 1000, 3), rec('3', t + 2000, 4)]); // replayed backfill
   assert.equal(b.get('2026-10').cost, 9);
   assert.equal(b.get('2026-10').count, 3);
+  // A gap that was never covered (e.g. downtime) is still counted after restart.
+  b.addLive([rec('0', t - 5000, 1)]);
+  assert.equal(b.get('2026-10').cost, 10);
   fs.unlinkSync(file);
+});
+
+test('MonthlyRollups.markCovered merges adjacent and overlapping intervals', () => {
+  const r = new MonthlyRollups({ file: '/nonexistent/x.json' });
+  r.markCovered(100, 200);
+  r.markCovered(300, 400);
+  r.markCovered(150, 301);
+  r.markCovered(401, 500);
+  assert.deepEqual(r.meta.counted, [[100, 500]]);
+});
+
+import { AdaptivePacer } from '../src/infra/adaptivePacer.js';
+
+test('AdaptivePacer halves on throttle, pauses, and recovers additively', () => {
+  const p = new AdaptivePacer({ startRps: 2, minRps: 0.25, maxRps: 2, increaseEvery: 2, step: 0.5 });
+  p.onThrottle(3000);
+  assert.equal(p.rate, 1);
+  assert.ok(p.coolingDownMs() > 2500 && p.coolingDownMs() <= 3000);
+  p.onThrottle();
+  p.onThrottle();
+  p.onThrottle();
+  assert.equal(p.rate, 0.25); // floored at minRps
+  for (let i = 0; i < 4; i++) p.onSuccess();
+  assert.equal(p.rate, 1.25); // +0.5 every 2 successes
+  for (let i = 0; i < 10; i++) p.onSuccess();
+  assert.equal(p.rate, 2); // capped at maxRps
 });
 
 import { hashPassword, verifyPassword, SessionStore } from '../src/auth/auth.js';

@@ -7,9 +7,9 @@ export function TopProgress() {
   return <div className={`top-progress ${n > 0 ? 'is-active' : ''}`} aria-hidden />;
 }
 
-export function Panel({ n, title, aside, children, className = '', busy, error, i = 0 }) {
+export function Panel({ n, title, aside, children, className = '', busy, error, i = 0, lazyRef }) {
   return (
-    <section className={`panel reveal ${className}`} style={{ '--i': i }} aria-busy={busy || undefined}>
+    <section ref={lazyRef} className={`panel reveal ${className}`} style={{ '--i': i }} aria-busy={busy || undefined}>
       <header className="panel__head">
         <span className="panel__n">{String(n).padStart(2, '0')}</span>
         <h2>{title}</h2>

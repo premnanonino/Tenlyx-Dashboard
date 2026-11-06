@@ -6,7 +6,8 @@ import { config } from './config.js';
 import { createLogger } from './core/logger.js';
 import { EventBus } from './core/eventBus.js';
 import { LRUCache } from './dsa/LRUCache.js';
-import { TokenBucketLimiter, PacedBucket } from './dsa/TokenBucket.js';
+import { TokenBucketLimiter } from './dsa/TokenBucket.js';
+import { AdaptivePacer } from './infra/adaptivePacer.js';
 import { CircuitBreaker } from './infra/circuitBreaker.js';
 import { SingleFlight } from './infra/singleFlight.js';
 import { Scheduler } from './infra/scheduler.js';
@@ -42,7 +43,8 @@ if (!config.telnyx.apiKey) {
 const auth = createAuth({ config, logger: log.child('auth') });
 const bus = new EventBus();
 
-const provider = new TelnyxClient({ config, pacer: new PacedBucket({ ratePerSec: config.telnyx.outboundRps, burst: config.telnyx.outboundRps }), logger: log.child('telnyx') });
+const pacer = new AdaptivePacer({ startRps: Math.min(1, config.telnyx.outboundRps), maxRps: config.telnyx.outboundRps });
+const provider = new TelnyxClient({ config, pacer, logger: log.child('telnyx') });
 
 const store = new BillingStore({ retentionMs: config.retentionDays * 86_400_000 });
 const analytics = new Analytics({ store });
@@ -72,7 +74,9 @@ scheduler
   .add({ name: 'groups', everyMs: config.poll.groupsMs, run: () => sync.syncGroups() })
   .add({ name: 'alerts', everyMs: 15_000, jitter: 0, run: async () => alerts.evaluate() })
   .add({ name: 'assistants', everyMs: config.poll.groupsMs, run: () => sync.syncAssistants() })
-  .add({ name: 'history', everyMs: 5 * 60_000, run: () => sync.backfillHistory() }) // resumes if interrupted
+  // Batch lanes: each run is one small chunk; the shared pacer keeps the pace.
+  .add({ name: 'backfill', everyMs: 500, jitter: 0, maxBackoffMs: 60_000, run: () => sync.backfillStep() })
+  .add({ name: 'history', everyMs: 2_000, jitter: 0, maxBackoffMs: 5 * 60_000, run: () => sync.historyStep() })
   .add({ name: 'rollup-flush', everyMs: config.reports.flushMs, jitter: 0, run: async () => rollups.flush() })
   .add({ name: 'housekeeping', everyMs: 60_000, run: async () => { limiter.sweep(); auth.sessions.sweep(); auth.attempts.sweep(); } });
 
@@ -83,7 +87,7 @@ app.set('trust proxy', 'loopback');
 app.use(securityHeaders({ hsts: config.auth.secureCookie }));
 app.use(requestContext(log.child('http')));
 app.use('/api', auth.sameOrigin, rateLimit(limiter), auth.router, auth.requireAuth, buildRouter({
-  config, store, analytics, alerts, sync, scheduler, breaker, flight, cache, limiter, sse, bus, provider, aiAnalytics, reports, rollups, auth,
+  config, store, analytics, alerts, sync, scheduler, breaker, flight, cache, limiter, sse, bus, provider, aiAnalytics, reports, rollups, auth, logger: log.child('api'),
 }));
 
 // Serve the built frontend when present (single-process production deploy).
@@ -108,8 +112,6 @@ const server = app.listen(config.port, async () => {
   alerts.evaluate();
   scheduler.start();
   rollups.flush();
-  // Fill report history in the background; the API is already serving.
-  sync.backfillHistory().catch((err) => log.warn('history backfill paused', { err: err.message }));
 });
 
 server.on('error', (err) => {

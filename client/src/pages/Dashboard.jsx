@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useResource } from '../lib/api.js';
-import { useNow } from '../lib/hooks.js';
+import { useInView, useNow } from '../lib/hooks.js';
 import { ago, money, num, productColor, productLabel, signedPct, utcDate } from '../lib/format.js';
 import { Figure, Panel, SkeletonRows, Tabs } from '../components/ui.jsx';
 import RangePicker, { rangeLabel, rangeQuery } from '../components/RangePicker.jsx';
@@ -32,20 +32,30 @@ export default function Dashboard() {
   const heatQ = range.range === '24h' ? 'range=7d' : rq;
   const [sysTick, setSysTick] = useState(0);
 
+  // Above the fold: fetched immediately.
   const overview = useResource('/overview', k);
   const series = useResource(`/spend/series?${rq}`, k);
   const split = useResource(`/spend/products?${rq}`, k);
-  const top = useResource(`/top?by=${dim}&k=8&${rq}`, k);
-  const balance = useResource(`/balance/history?${rq}`, k);
-  const heat = useResource(`/spend/heatmap?${heatQ}`, k);
-  const pace = useResource('/spend/pace', k);
-  const system = useResource('/system', sysTick);
 
-  // Internals refresh on their own 4s clock, independent of data events.
+  // Below the fold: each panel fetches only once it scrolls near the viewport.
+  const [paceRef, paceSeen] = useInView();
+  const [heatRef, heatSeen] = useInView();
+  const [topRef, topSeen] = useInView();
+  const [balRef, balSeen] = useInView();
+  const [ledgerRef, ledgerSeen] = useInView();
+  const [sysRef, sysSeen, sysVisible] = useInView('100px');
+  const pace = useResource('/spend/pace', k, { enabled: paceSeen });
+  const heat = useResource(`/spend/heatmap?${heatQ}`, k, { enabled: heatSeen });
+  const top = useResource(`/top?by=${dim}&k=8&${rq}`, k, { enabled: topSeen });
+  const balance = useResource(`/balance/history?${rq}`, k, { enabled: balSeen });
+  const system = useResource('/system', sysTick, { enabled: sysSeen });
+
+  // Internals refresh on their own 4s clock, but only while on screen.
   useEffect(() => {
+    if (!sysVisible) return undefined;
     const id = setInterval(() => setSysTick((x) => x + 1), 4000);
     return () => clearInterval(id);
-  }, []);
+  }, [sysVisible]);
 
   const o = overview.data;
   const cur = o?.currency || 'USD';
@@ -116,21 +126,21 @@ export default function Dashboard() {
           ) : <SkeletonRows rows={8} h={18} />}
         </Panel>
 
-        <Panel n={3} i={4} title="Month pace" className="span-7" error={pace.error}>
+        <Panel n={3} i={4} title="Month pace" className="span-7" error={pace.error} lazyRef={paceRef}>
           <PaceChart data={pace.data} />
         </Panel>
 
-        <Panel n={4} i={5} title={`When you spend · ${range.range === '24h' ? '7D' : rangeLabel(range)}`} className="span-5" busy={heat.switching} error={heat.error}>
+        <Panel n={4} i={5} title={`When you spend · ${range.range === '24h' ? '7D' : rangeLabel(range)}`} className="span-5" busy={heat.switching} error={heat.error} lazyRef={heatRef}>
           {heat.data ? <Heatmap data={heat.data} currency={cur} /> : <SkeletonRows rows={7} h={18} />}
           {range.range === '24h' && <p className="foot-note mono">uses the last 7 days: one day is too little for a weekly pattern</p>}
         </Panel>
 
-        <Panel n={5} i={6} title={`Top spend · ${rangeLabel(range)}`} className="span-5" busy={top.switching} error={top.error}
+        <Panel n={5} i={6} title={`Top spend · ${rangeLabel(range)}`} className="span-5" busy={top.switching} error={top.error} lazyRef={topRef}
           aside={<Tabs value={dim} onChange={setDim} options={DIMS} label="Top dimension" />}>
           <TopList data={top.data} currency={cur} />
         </Panel>
 
-        <Panel n={6} i={7} title="Balance" className="span-4" busy={balance.switching} error={balance.error}>
+        <Panel n={6} i={7} title="Balance" className="span-4" busy={balance.switching} error={balance.error} lazyRef={balRef}>
           <BalanceChart data={balance.data} currency={cur} />
         </Panel>
 
@@ -139,11 +149,11 @@ export default function Dashboard() {
           <AlertsPanel data={alerts.data} now={now} onSaved={alerts.reload} />
         </Panel>
 
-        <Panel n={8} i={9} title="Ledger" className="span-12">
-          <Ledger tick={k} currency={cur} range={range} />
+        <Panel n={8} i={9} title="Ledger" className="span-12" lazyRef={ledgerRef}>
+          {ledgerSeen ? <Ledger tick={k} currency={cur} range={range} /> : <SkeletonRows rows={10} h={20} />}
         </Panel>
 
-        <Panel n={9} i={10} title="Backend internals" className="span-12" error={system.error}
+        <Panel n={9} i={10} title="Backend internals" className="span-12" error={system.error} lazyRef={sysRef}
           aside={<span className="mono dim refresh-note">refresh 4s</span>}>
           <SystemPanel data={system.data} now={now} />
         </Panel>

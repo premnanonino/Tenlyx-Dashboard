@@ -29,8 +29,9 @@ export async function api(path, { method = 'GET', body, signal } = {}) {
 /**
  * Fetch hook that keeps the previous data while refetching
  * (so panels show a loader overlay, not an empty flash).
+ * `enabled: false` defers the request (lazy panels below the fold).
  */
-export function useResource(path, refreshKey = 0) {
+export function useResource(path, refreshKey = 0, { enabled = true } = {}) {
   const [state, setState] = useState({ data: null, error: null, loading: true, path: null });
   const ctrl = useRef(null);
 
@@ -44,7 +45,11 @@ export function useResource(path, refreshKey = 0) {
       .catch((error) => { if (!c.signal.aborted) setState((s) => ({ ...s, error, loading: false })); });
   }, [path]);
 
-  useEffect(() => { load(); return () => ctrl.current?.abort(); }, [load, refreshKey]);
+  useEffect(() => {
+    if (!enabled) return undefined;
+    load();
+    return () => ctrl.current?.abort();
+  }, [load, refreshKey, enabled]);
 
   return {
     ...state,

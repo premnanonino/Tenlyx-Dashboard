@@ -11,6 +11,7 @@ export function useStream({ throttleMs = 2500, onRecords, onAlert } = {}) {
   const [lastEventAt, setLastEventAt] = useState(null);
   const [tick, setTick] = useState(0);
   const [mode, setMode] = useState(null);
+  const [sync, setSync] = useState(null);
   const handlers = useRef({ onRecords, onAlert });
   handlers.current = { onRecords, onAlert };
 
@@ -33,9 +34,10 @@ export function useStream({ throttleMs = 2500, onRecords, onAlert } = {}) {
     es.addEventListener('records', (e) => { bump(); handlers.current.onRecords?.(JSON.parse(e.data)); });
     es.addEventListener('alert', (e) => { bump(); handlers.current.onAlert?.(JSON.parse(e.data)); });
     es.addEventListener('breaker', bump);
+    es.addEventListener('sync', (e) => setSync(JSON.parse(e.data)));
 
     return () => { clearTimeout(pending); es.close(); };
   }, [throttleMs]);
 
-  return { status, lastEventAt, tick, mode };
+  return { status, lastEventAt, tick, mode, sync };
 }

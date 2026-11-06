@@ -74,7 +74,7 @@ Sessions live in memory, so a server restart signs you out. To scale out, move t
 │                  │                                  │                            │
 │                  │ singleFlight → circuitBreaker → retry(backoff+jitter)         │
 │                  ▼                                  └─► AlertEngine (rules)      │
-│               Provider: TelnyxClient (PacedBucket)                               │
+│               Provider: TelnyxClient (AdaptivePacer)                             │
 │                  ▲                                                               │
 │               Scheduler: records · balance · groups · alerts · housekeeping      │
 └──────────────────┼───────────────────────────────────────────────────────────────┘
@@ -96,17 +96,23 @@ Sessions live in memory, so a server restart signs you out. To scale out, move t
 
 ### Resilience: the upstream call stack
 
-Every Telnyx call goes through the same layered policy (`services/billingSync.js`):
+Every Telnyx call goes through the same layered policy (`services/billingSync.js`, `providers/telnyxClient.js`):
 
 ```
-singleFlight.do(key)            ← concurrent identical calls share one promise
-  └ circuitBreaker.exec()       ← CLOSED → OPEN (fail fast) → HALF_OPEN (1 probe) → CLOSED
-      └ retry(backoff + jitter) ← delay = random(0, min(cap, base·2^n)); honours Retry-After
-          └ PacedBucket.take()  ← outbound pacing so we stay under Telnyx rate limits
-              └ fetch(timeout)  ← AbortSignal.timeout, errors classified retryable / not
+singleFlight.do(key)              ← concurrent identical calls share one promise
+  └ circuitBreaker.exec()         ← CLOSED → OPEN (fail fast) → HALF_OPEN (1 probe) → CLOSED
+      └ per-request retry         ← 429: wait out Retry-After; 5xx/network: backoff + jitter
+          └ AdaptivePacer.take()  ← shared FIFO pacing; halves on 429, creeps back up (AIMD)
+              └ fetch(timeout)    ← AbortSignal.timeout, errors classified
 ```
 
-- **Error classification:** 429 and 5xx are retryable and count against the breaker. 401/404 are configuration errors: they are not retried and don't trip the breaker.
+- **Batch-by-batch sync.** Records stream in page by page (`TelnyxClient.recordBatches()`, an async generator) and each page is ingested the moment it arrives. Three lanes share the pacer:
+  - **live**: every 60 s reads `[watermark − 30 min, now]`. A cold start reads only the newest hour, so the dashboard has numbers within seconds.
+  - **backfill**: walks backwards one hour-chunk at a time, newest first, to 7 days (or further back over downtime, up to retention). Its cursor only moves after a chunk completes.
+  - **history**: once the backfill is done, fills monthly rollups for older months in 6-hour chunks (lowest priority).
+  A 429 costs one page, not the sync: already-ingested pages stay, and the store's primary key de-duplicates any re-read. Progress is pushed to the browser as `sync` events (nav bar: "loading · back to Nov 3").
+- **Adaptive rate limiting.** Telnyx's limit isn't known in advance. The pacer starts at 1 req/s, halves on every 429 (pausing all callers for Retry-After), and adds 0.1 req/s after every 20 successes, up to `TELNYX_RPS`.
+- **Error classification:** 5xx and network errors count against the breaker. 429s (our pacing) and 401/404 (configuration) don't trip it.
 - **Scheduler:** uses `setTimeout` chaining, so a slow run never overlaps itself. ±10% jitter keeps jobs from aligning. Consecutive failures back off exponentially (capped at 10 min), and p50/p95 run latencies are kept in a ring buffer.
 - **Incremental sync with a high-water mark:** each poll asks for `[watermark − 5 min, now)`. The overlap catches late-arriving records, and the primary-key index drops duplicates, which makes ingest idempotent.
 - **Back-pressure:** an SSE client whose socket buffer passes 1 MiB is disconnected instead of growing memory without limit.
@@ -161,8 +167,8 @@ All hand-written in `server/src/dsa/` and covered by `server/test/dsa.test.js`.
 
 The raw log only holds 35 days, so each record is also folded into a per-month aggregate as it is ingested. That aggregate covers totals, product/country/group/direction, per-day series, AI model and assistant stats, a Space-Saving sketch of top numbers, and balance open/close. It is flushed to `server/data/rollups*.json` every 30 s and on shutdown, written to a temp file and renamed so the file is never half-written.
 
-- `meta.highWater` (persisted) is the newest record timestamp ever counted. On boot it becomes `bootHighWater`, and live ingest only counts store-new records newer than it. The post-restart backfill that re-reads 30 days is therefore not double-counted (covered by a unit test).
-- `meta.liveFrom` is where the first live sync began. **History** before that (default: the previous 3 months) is filled by `BillingSync.backfillHistory()`. It works one day at a time, in the background, through the same breaker/retry/coalescing stack, and feeds only the rollups. Progress is persisted in `meta.historyDoneThrough`, so an interrupted backfill resumes. A scheduler job retries it every 5 min until it completes.
+- `meta.counted` (persisted) is a merged list of time intervals whose records are fully counted; each sync lane adds its window once it completes. After a restart, records inside those intervals are skipped, so re-reading the last days is not double-counted, while a downtime gap (outside every interval) is still filled. Covered by unit and integration tests, including a fake Telnyx that throttles every fifth page.
+- `meta.liveFrom` is where the recent backfill stops. **History** before that (default: the previous 3 months) is filled by `BillingSync.historyStep()`, one 6-hour chunk per step, buffered and committed whole. Progress is persisted in `meta.historyDoneThrough`, so an interrupted backfill resumes.
 - Each month's report is tagged **complete**, **in progress** (current month, with a projection) or **partial** (data starts mid-month, or the backfill hasn't reached it yet).
 
 ### Conversational AI analytics
@@ -356,6 +362,8 @@ See `.env.example`. Key settings:
 | `TELNYX_RECORD_TYPES` | `messaging,call-control,sip-trunking` | detail record types to ingest (call-control and sip-trunking are separate charges on the same leg) |
 | `TELNYX_BACKFILL_DAYS` | 7 | first-sync window |
 | `POLL_BALANCE_MS` / `POLL_RECORDS_MS` | 30 s / 60 s | |
+| `TELNYX_RPS` | 2 | ceiling for the adaptive pacer (starts at 1 req/s, halves on 429) |
+| `SYNC_LIVE_HEAD_MS` / `SYNC_CHUNK_MS` | 1 h / 1 h | cold-start head window / backfill step size |
 | `ALERT_LOW_BALANCE`, `ALERT_RUNWAY_DAYS`, `ALERT_SPIKE_Z` | 250 / 7 / 3 | also editable in the UI |
 | `LOGIN_EMAIL_DOMAIN` | `courserev.ai` | email domain allowed to sign in |
 | `SHARED_PASSWORD_HASH` | — (required) | scrypt hash of the shared password; set with `npm --prefix server run set-password` |
