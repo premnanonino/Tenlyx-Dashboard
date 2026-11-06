@@ -1,0 +1,258 @@
+/* ==========================================================================
+   Error page: themed message panel + dark "status display" panel that
+   prints a receipt. Same family as the login page. Flat colours only.
+   ========================================================================== */
+.errp {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  grid-template-areas: "main side";
+  min-height: 100%;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+/* ---- message panel ------------------------------------------------------ */
+.errp__main { grid-area: main; display: grid; grid-template-rows: auto 1fr; padding: 22px 40px 40px; min-width: 0; }
+.errp__top { display: flex; justify-content: space-between; align-items: center; }
+.errp__back { font-size: 12px; color: var(--muted); text-decoration: none; }
+.errp__back:hover { color: var(--accent); }
+
+.errp__body {
+  align-self: center;
+  justify-self: center;
+  width: min(520px, 100%);
+  display: grid;
+  gap: 18px;
+  padding: 32px 0;
+  animation: errp-in 0.6s var(--ease-out) both 0.1s;
+}
+@keyframes errp-in { from { opacity: 0; transform: translateY(14px); } }
+
+.errp__kicker { display: flex; gap: 10px; align-items: center; margin: 0; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.errp__kicker span { padding: 2px 6px; background: var(--accent); color: #0c0c0b; font-weight: 600; }
+
+.errp h1 {
+  display: grid;
+  margin: -4px 0 0;
+  font-size: clamp(48px, 6.4vw, 92px);
+  font-weight: 700;
+  line-height: 0.86;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+  outline: none;
+}
+.errp h1 span { display: block; animation: errp-big 0.9s var(--ease-out) both; }
+.errp h1 span:nth-child(2) { animation-delay: 0.08s; }
+.errp h1 em { font-style: normal; color: var(--accent); }
+@keyframes errp-big { from { clip-path: inset(0 0 100% 0); transform: translateY(30%); } to { clip-path: inset(0); transform: none; } }
+
+.errp__lead { margin: 0; max-width: 46ch; color: var(--ink-2); font-size: 17px; line-height: 1.45; }
+
+.errp__path { display: flex; gap: 10px; align-items: center; min-width: 0; margin: 0; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.errp__path code {
+  min-width: 0;
+  overflow: hidden;
+  padding: 4px 8px;
+  border: 1px solid var(--rule);
+  background: var(--paper-2);
+  color: var(--ink);
+  font-size: 13px;
+  letter-spacing: 0;
+  text-transform: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-decoration: line-through 1.5px var(--accent);
+}
+
+/* "Did you mean" — a ledger row that inverts on hover. */
+.errp__suggest {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "k go" "name go" "path go";
+  column-gap: 16px;
+  row-gap: 2px;
+  padding: 12px 16px;
+  border: 1.5px solid var(--ink);
+  color: var(--ink);
+  text-decoration: none;
+  transition: background 0.2s, color 0.2s;
+}
+.errp__suggest-k { grid-area: k; font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); }
+.errp__suggest b { grid-area: name; font-size: 20px; text-transform: uppercase; }
+.errp__suggest code { grid-area: path; min-width: 0; overflow: hidden; font-size: 12px; color: var(--muted); text-overflow: ellipsis; white-space: nowrap; }
+.errp__suggest-go { grid-area: go; align-self: center; font-size: 24px; transition: transform 0.25s var(--ease-out); }
+.errp__suggest:hover { background: var(--ink); color: var(--paper); }
+.errp__suggest:hover code { color: inherit; opacity: 0.7; }
+.errp__suggest:hover .errp__suggest-go { transform: translateX(4px); }
+
+.errp__wait { display: flex; gap: 10px; align-items: center; margin: 0; font-size: 12px; color: var(--warn); }
+
+.errp__actions { display: grid; gap: 10px; margin-top: 4px; }
+.errp__primary {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 18px;
+  border: 0;
+  background: var(--accent);
+  color: #0c0c0b;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 28px;
+  text-align: left;
+  text-decoration: none;
+  text-transform: uppercase;
+  overflow: hidden;
+  isolation: isolate;
+}
+.errp__primary > span:not(.errp__primary-fill) { display: inline-flex; align-items: center; gap: 10px; }
+.errp__primary-fill { position: absolute; inset: 0; z-index: -1; background: var(--ink); transform: scaleX(0); transform-origin: left; transition: transform 0.4s var(--ease-in-out); }
+.errp__primary:hover { color: var(--paper); }
+.errp__primary:hover .errp__primary-fill { transform: scaleX(1); }
+
+.errp__secondary { display: flex; flex-wrap: wrap; gap: 8px; }
+.errp__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--ink);
+  background: transparent;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.errp__btn:hover { background: var(--ink); color: var(--paper); }
+
+.errp__copied { min-height: 1em; margin: -4px 0 0; font-size: 11px; color: var(--ok); }
+.errp__copied:empty { display: none; }
+
+.errp__details summary { width: max-content; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); cursor: pointer; }
+.errp__details summary:hover { color: var(--ink); }
+.errp__details pre {
+  max-height: 240px;
+  margin: 10px 0 0;
+  padding: 12px 14px;
+  overflow: auto;
+  border: 1px solid var(--rule);
+  border-left: 4px solid var(--crit);
+  background: var(--paper-2);
+  font-size: 11.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: all;
+}
+
+.errp__foot { margin: 0; font-size: 11px; color: var(--muted); }
+
+/* ---- status display panel (fixed dark palette, like the login side) ---- */
+.errp__side {
+  grid-area: side;
+  position: relative;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 32px;
+  min-width: 0;
+  padding: 28px 40px 48px;
+  overflow: hidden;
+  background: #0c0c0b;
+  color: #efebe2;
+}
+.errp__side-top { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #8c867a; }
+.errp__side-top .mark { text-decoration: none; }
+
+.errp__matrix {
+  align-self: center;
+  justify-self: center;
+  display: grid;
+  grid-template-columns: repeat(var(--cols), 1fr);
+  gap: 4px;
+  width: min(100%, 500px);
+}
+.errp__matrix i { aspect-ratio: 1; background: #1a1a18; }
+/* Pixels light column by column, in hard steps, like a scanning LED board. */
+.errp__matrix i.on { animation: errp-px 0.01s steps(1) both; animation-delay: calc(var(--c) * 38ms + var(--r) * 10ms + 150ms); }
+.errp__matrix i.on.b {
+  animation: errp-px 0.01s steps(1) both, errp-blink 3.6s steps(1) infinite;
+  animation-delay: calc(var(--c) * 38ms + var(--r) * 10ms + 150ms), calc(1.6s + var(--d));
+}
+.errp__matrix i.f { animation: errp-sig 2.8s steps(1) infinite; animation-delay: var(--d); }
+@keyframes errp-px { from { background: #1a1a18; } to { background: #e0482a; } }
+@keyframes errp-blink { 0%, 92% { background: #e0482a; } 93%, 96% { background: #5a2215; } 97%, 100% { background: #e0482a; } }
+@keyframes errp-sig { 0%, 76% { background: #1a1a18; } 78%, 88% { background: #33312c; } 90%, 100% { background: #1a1a18; } }
+
+/* Receipt prints out of a slot, line by line, then gets stamped. */
+.errp__printer { justify-self: center; display: grid; width: min(100%, 360px); }
+.errp__slot { position: relative; z-index: 1; height: 9px; margin: 0 -12px; border: 1px solid #3a3833; background: #222220; }
+.errp__feed { margin-top: -4px; padding-bottom: 10px; overflow: hidden; }
+.errp__receipt {
+  position: relative;
+  padding: 20px 22px 16px;
+  background: #efebe2;
+  color: #151515;
+  animation: errp-print 1.2s steps(16) both 0.5s;
+}
+@keyframes errp-print { from { transform: translateY(-100%); } }
+
+.errp__r-head { display: flex; justify-content: space-between; padding-bottom: 10px; border-bottom: 1.5px dashed #151515; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+.errp__r-lines { display: grid; gap: 6px; margin: 12px 0; font-size: 12px; }
+.errp__r-lines div { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 10px; }
+.errp__r-lines dt { padding-top: 1px; font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: #77726a; }
+.errp__r-lines dd { margin: 0; overflow: hidden; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
+.errp__r-total { display: flex; justify-content: space-between; align-items: baseline; padding: 10px 0; border-block: 1.5px dashed #151515; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+.errp__r-total b { font-size: 22px; letter-spacing: 0; }
+.errp__r-note { margin: 10px 0 12px; font-size: 10px; letter-spacing: 0.12em; text-align: center; text-transform: uppercase; color: #77726a; }
+.errp__barcode { display: block; width: 100%; height: 30px; fill: #151515; }
+.errp__tear { position: absolute; top: 100%; left: 0; display: block; width: 100%; height: 7px; fill: #efebe2; }
+
+.errp__stamp {
+  position: absolute;
+  bottom: 26px;
+  right: 34px;
+  padding: 3px 12px;
+  border: 3px solid #e0482a;
+  color: #e0482a;
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  transform: rotate(-14deg);
+  mix-blend-mode: multiply;
+  animation: errp-stamp 0.28s steps(3) both 1.85s;
+}
+@keyframes errp-stamp { from { opacity: 0; transform: rotate(-14deg) scale(1.9); } }
+
+/* ---- embedded inside the dashboard (nav stays) -------------------------- */
+.errp--embedded {
+  min-height: 0;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+  margin: 8px 0 48px;
+  border: 1.5px solid var(--ink);
+}
+.errp--embedded .errp__main { grid-template-rows: 1fr; padding: 32px 36px; }
+.errp--embedded .errp__body { justify-self: start; padding: 0; }
+.errp--embedded h1 { font-size: clamp(40px, 4.6vw, 68px); }
+.errp--embedded .errp__side { grid-template-rows: 1fr; padding: 32px; }
+.errp--embedded .errp__matrix { width: min(100%, 380px); }
+
+/* ---- small screens -------------------------------------------------------- */
+@media (max-width: 860px) {
+  .errp, .errp--embedded { grid-template-columns: minmax(0, 1fr); grid-template-areas: "side" "main"; }
+  .errp__side { grid-template-rows: auto auto; gap: 18px; padding: 16px 16px 22px; }
+  .errp--embedded .errp__side { padding: 20px 16px; }
+  .errp__matrix { width: min(100%, 320px); }
+  .errp__printer { display: none; }
+  .errp__main, .errp--embedded .errp__main { padding: 16px; }
+  .errp__body { padding: 12px 0 24px; }
+  .errp h1 { font-size: 44px; }
+  .errp__primary { font-size: 18px; }
+}
+
+@media print {
+  .errp__side { display: none; }
+  .errp { grid-template-columns: 1fr; grid-template-areas: "main"; }
+}

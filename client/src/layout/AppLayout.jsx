@@ -7,6 +7,9 @@ import { useNow } from '../lib/hooks.js';
 import { ago, utcTime } from '../lib/format.js';
 import { TopProgress } from '../components/ui.jsx';
 import { ThemeToggle } from '../lib/theme.jsx';
+import { ErrorBoundary } from '../components/ErrorBoundary.jsx';
+import { classify } from '../lib/errors.js';
+import ErrorPage from '../pages/ErrorPage.jsx';
 import '../styles/dashboard.css';
 import '../styles/nav.css';
 import '../styles/charts.css';
@@ -31,6 +34,7 @@ const SECTIONS = {
   ai: { n: '02', label: 'Conversational AI' },
   reports: { n: '03', label: 'Monthly statements' },
 };
+const UNKNOWN_SECTION = { n: '404', label: 'Not found' };
 
 /** Fixed floating nav once the in-hero nav has scrolled out of view. */
 function useStuck() {
@@ -168,6 +172,7 @@ function Shell({ user, location }) {
   };
 
   const section = location.pathname.split('/')[2] || 'overview';
+  const sec = SECTIONS[section] ?? UNKNOWN_SECTION;
   const activeAlerts = alerts.data?.active.length || 0;
 
   return (
@@ -199,12 +204,12 @@ function Shell({ user, location }) {
           </div>
         </header>
           </div>
-          <section className={`hero hero--${section} on-dark`} aria-label={`${SECTIONS[section]?.label ?? 'Dashboard'} header`}>
+          <section className={`hero hero--${section} on-dark`} aria-label={`${sec.label} header`}>
             <div className="hero__img" aria-hidden />
             <div className="hero__shade" aria-hidden />
             <div className="hero__nav-spacer" aria-hidden />
             <p className="hero__kicker mono" key={section}>
-              <span>{SECTIONS[section]?.n}</span> {SECTIONS[section]?.label}
+              <span>{sec.n}</span> {sec.label}
               <i aria-hidden /> api.telnyx.com/v2
             </p>
             <div className="hero__slot" ref={setSlot} />
@@ -217,7 +222,15 @@ function Shell({ user, location }) {
 
         <HeroSlotContext.Provider value={slot}>
           <main className="page" key={section} id="main" tabIndex={-1}>
-            <Outlet />
+            {/* A broken section shows the error inside the dashboard; nav keeps working. */}
+            <ErrorBoundary
+              resetKey={location.pathname}
+              fallback={({ error, componentStack, reset }) => (
+                <ErrorPage kind={classify(error)} error={error} componentStack={componentStack} onRetry={reset} embedded />
+              )}
+            >
+              <Outlet />
+            </ErrorBoundary>
           </main>
         </HeroSlotContext.Provider>
 

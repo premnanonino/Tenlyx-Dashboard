@@ -90,7 +90,14 @@ app.use('/api', auth.sameOrigin, rateLimit(limiter), auth.router, auth.requireAu
 const dist = path.resolve(config.serverRoot, '..', 'client', 'dist');
 if (fs.existsSync(dist)) {
   app.use(express.static(dist, { maxAge: '1h', index: false }));
-  app.use((req, res, next) => (req.method === 'GET' && !req.path.startsWith('/api') ? res.sendFile(path.join(dist, 'index.html')) : next()));
+  // Client routes get the SPA shell with 200; anything else still gets the
+  // shell (it renders the 404 page) but with a real 404 status for crawlers,
+  // monitors and logs.
+  const CLIENT_ROUTE = /^\/(?:login|dashboard(?:\/(?:ai|reports(?:\/\d{4}-\d{2})?))?)?\/?$/;
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' || req.path.startsWith('/api')) return next();
+    res.status(CLIENT_ROUTE.test(req.path) ? 200 : 404).sendFile(path.join(dist, 'index.html'));
+  });
 }
 app.use(notFound);
 app.use(errorHandler(log));

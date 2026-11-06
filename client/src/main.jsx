@@ -1,8 +1,12 @@
 import { lazy, StrictMode, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom';
 import './styles/base.css';
 import { applyTheme, getStoredTheme } from './lib/theme.jsx';
+import { ErrorBoundary } from './components/ErrorBoundary.jsx';
+import { classify } from './lib/errors.js';
+// Statically bundled on purpose: it must render even when lazy chunks fail.
+import ErrorPage from './pages/ErrorPage.jsx';
 
 // Apply the saved theme before first paint (no light flash in dark mode).
 applyTheme(getStoredTheme());
@@ -35,9 +39,25 @@ function PageLoader() {
 
 const page = (el) => <Suspense fallback={<PageLoader />}>{el}</Suspense>;
 
+/** Last line of defence: any uncaught render error shows the error page, not a blank screen. */
+function RootBoundary({ children }) {
+  const { pathname } = useLocation();
+  return (
+    <ErrorBoundary
+      resetKey={pathname}
+      fallback={({ error, componentStack, reset }) => (
+        <ErrorPage kind={classify(error)} error={error} componentStack={componentStack} onRetry={reset} />
+      )}
+    >
+      {children}
+    </ErrorBoundary>
+  );
+}
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <RootBoundary>
       <Suspense fallback={<ModuleLoader />}>
         <Routes>
           <Route path="/" element={<Landing />} />
@@ -47,10 +67,12 @@ createRoot(document.getElementById('root')).render(
             <Route path="ai" element={page(<AiPage />)} />
             <Route path="reports" element={page(<Reports />)} />
             <Route path="reports/:month" element={page(<Reports />)} />
+            <Route path="*" element={<ErrorPage kind="notfound" embedded />} />
           </Route>
-          <Route path="*" element={<Landing />} />
+          <Route path="*" element={<ErrorPage kind="notfound" />} />
         </Routes>
       </Suspense>
+      </RootBoundary>
     </BrowserRouter>
   </StrictMode>,
 );

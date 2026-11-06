@@ -14,7 +14,19 @@
     />
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Shown only until the app mounts; if the bundle never loads, the delayed hint explains why. -->
+      <div style="position:fixed;inset:0;display:grid;place-content:center;gap:14px;background:#0c0c0b;color:#efebe2;font:12px/1.5 'IBM Plex Mono',ui-monospace,Menlo,monospace;letter-spacing:.08em;text-transform:uppercase;text-align:center">
+        <span>TLX/MON · loading</span>
+        <span style="color:#8c867a;opacity:0;animation:tlx-late .01s 8s forwards">Still loading. Check your connection, then reload the page.</span>
+        <style>@keyframes tlx-late{to{opacity:1}}</style>
+      </div>
+    </div>
+    <noscript>
+      <div style="position:fixed;inset:0;display:grid;place-content:center;padding:24px;background:#0c0c0b;color:#efebe2;font:14px/1.5 ui-monospace,Menlo,monospace;text-align:center">
+        TLX/MON needs JavaScript to show your billing data. Enable it for this site and reload.
+      </div>
+    </noscript>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
