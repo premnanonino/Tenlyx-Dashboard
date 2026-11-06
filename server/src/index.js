@@ -112,6 +112,17 @@ const server = app.listen(config.port, async () => {
   sync.backfillHistory().catch((err) => log.warn('history backfill paused', { err: err.message }));
 });
 
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    log.error('port already in use', {
+      port: config.port,
+      fix: 'the server is probably already running (root `npm run dev` starts it). Stop the other copy, or set PORT=<other port>.',
+    });
+    process.exit(1);
+  }
+  throw err;
+});
+
 function shutdown(signal) {
   log.info('shutting down', { signal });
   scheduler.stop();
