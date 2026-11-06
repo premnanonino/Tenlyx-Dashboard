@@ -12,6 +12,37 @@ export function requestContext(logger) {
   };
 }
 
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com",
+  "img-src 'self' data: blob:",
+  "connect-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join('; ');
+
+/** Baseline browser hardening for every response (no extra dependency). */
+export function securityHeaders({ hsts = false } = {}) {
+  return (req, res, next) => {
+    res.set({
+      'content-security-policy': CSP,
+      'x-frame-options': 'DENY',
+      'x-content-type-options': 'nosniff',
+      'referrer-policy': 'no-referrer',
+      'cross-origin-opener-policy': 'same-origin',
+      'permissions-policy': 'camera=(), microphone=(), geolocation=()',
+    });
+    if (hsts) res.set('strict-transport-security', 'max-age=31536000; includeSubDomains');
+    // Billing data must not be kept by browser or proxy caches.
+    if (req.path.startsWith('/api')) res.set('cache-control', 'no-store');
+    next();
+  };
+}
+
 /** Per-client token bucket. Expensive endpoints can charge more tokens. */
 export function rateLimit(limiter, cost = 1) {
   return (req, res, next) => {

@@ -1,6 +1,7 @@
 import express from 'express';
 import { cached, rateLimit } from './middleware.js';
 import { parseWindow } from '../services/analytics.js';
+import { csvCell } from '../core/csv.js';
 
 const clampInt = (v, lo, hi, d) => {
   const n = Number.parseInt(v, 10);
@@ -64,7 +65,7 @@ export function buildRouter(ctx) {
       const f = recordFilters(req);
       const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, '');
       res.type('text/csv').attachment(`tlxmon-ledger-${stamp}.csv`);
-      const esc = (v) => { const x = v === null || v === undefined ? '' : String(v); return /[",\n]/.test(x) ? `"${x.replace(/"/g, '""')}"` : x; };
+      const esc = csvCell;
       res.write('time_utc,id,product,direction,destination,country,billing_group,units,unit,rate,cost,currency,status,ai_model,ai_assistant,ai_outcome\n');
       let buf = [];
       let n = 0;

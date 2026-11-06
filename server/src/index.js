@@ -20,7 +20,7 @@ import { MonthlyRollups } from './services/monthlyRollups.js';
 import { Reports } from './services/reports.js';
 import { SseHub } from './api/sseHub.js';
 import { buildRouter } from './api/routes.js';
-import { requestContext, rateLimit, notFound, errorHandler } from './api/middleware.js';
+import { requestContext, rateLimit, notFound, errorHandler, securityHeaders } from './api/middleware.js';
 import { createAuth } from './auth/auth.js';
 
 // ---------------------------------------------------------------------------
@@ -80,6 +80,7 @@ scheduler
 const app = express();
 app.disable('x-powered-by');
 app.set('trust proxy', 'loopback');
+app.use(securityHeaders({ hsts: config.auth.secureCookie }));
 app.use(requestContext(log.child('http')));
 app.use('/api', auth.sameOrigin, rateLimit(limiter), auth.router, auth.requireAuth, buildRouter({
   config, store, analytics, alerts, sync, scheduler, breaker, flight, cache, limiter, sse, bus, provider, aiAnalytics, reports, rollups, auth,

@@ -1,4 +1,5 @@
 import { deriveAi, scorecard } from './aiAnalytics.js';
+import { csvCell } from '../core/csv.js';
 
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 const DAY = 86_400_000;
@@ -167,11 +168,7 @@ export class Reports {
   /** One CSV with every section of a month's statement. */
   csv(key) {
     const r = this.build(key);
-    const esc = (v) => {
-      if (v === null || v === undefined) return '';
-      const s = typeof v === 'number' ? String(Math.round(v * 1e6) / 1e6) : String(v);
-      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-    };
+    const esc = csvCell;
     const rows = [];
     const section = (title, header, data) => { rows.push([`# ${title}`], header, ...data, []); };
     section('Summary', ['metric', 'value'], [
