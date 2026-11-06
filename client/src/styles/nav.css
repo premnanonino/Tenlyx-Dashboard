@@ -1,0 +1,91 @@
+/* ==========================================================================
+   Persistent nav bar + page transitions
+   ========================================================================== */
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--paper);
+  border-bottom: 1px solid var(--rule-strong);
+  animation: slide-down 0.6s var(--ease-out) both;
+}
+.nav__row {
+  display: flex;
+  align-items: stretch;
+  gap: 18px;
+  min-height: 56px;
+  padding: 0 28px;
+}
+.nav__row > .mark, .nav__row > .chip { align-self: center; }
+.nav .mark { text-decoration: none; color: var(--ink); }
+
+.nav__links { position: relative; display: flex; margin-left: 18px; }
+.nav__links ul { display: flex; margin: 0; padding: 0; list-style: none; }
+.nav__links a {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 100%;
+  padding: 0 16px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  color: var(--muted);
+  white-space: nowrap;
+  transition: color 0.2s;
+}
+.nav__links a:hover { color: var(--ink); }
+.nav__links a.is-active { color: var(--ink); }
+.nav__n { font-size: 10.5px; font-weight: 500; color: var(--rule); transition: color 0.2s; }
+.nav__links a.is-active .nav__n, .nav__links a:hover .nav__n { color: var(--accent); }
+/* Sliding indicator: one solid bar that moves between tabs. */
+.nav__bar {
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  height: 3px;
+  background: var(--accent);
+  transition: transform 0.45s var(--ease-out), width 0.45s var(--ease-out);
+}
+.nav__badge {
+  min-width: 18px;
+  padding: 1px 5px;
+  background: var(--crit);
+  color: var(--paper);
+  font-size: 10px;
+  text-align: center;
+  animation: blink-steps 1.4s steps(2) infinite;
+}
+
+.nav__right { display: flex; align-items: center; gap: 14px; margin-left: auto; }
+
+/* Content swap between sections. */
+.page { animation: page-in 0.45s var(--ease-out) both; }
+@keyframes page-in { from { opacity: 0; transform: translateY(10px); } }
+
+.page-loader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 60px 28px;
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+@media (max-width: 1100px) {
+  .nav__row { flex-wrap: wrap; row-gap: 0; padding: 10px 16px 0; }
+  .nav__right { order: 2; }
+  .nav__links { order: 3; width: 100%; margin: 6px -16px 0; padding: 0 16px; overflow-x: auto; scrollbar-width: none; border-top: 1px solid var(--rule); }
+  .nav__links::-webkit-scrollbar { display: none; }
+  .nav__links a { height: 44px; padding: 0 12px; }
+  .nav__links li:first-child a { padding-left: 0; }
+}
+@media (max-width: 760px) {
+  .nav__right .clock, .nav__right .stream { display: none; }
+  .nav__right { gap: 8px; }
+  .nav__right .btn { min-width: 0; padding: 6px 10px; }
+}

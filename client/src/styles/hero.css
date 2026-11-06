@@ -1,0 +1,198 @@
+/* ==========================================================================
+   Dashboard hero: background image + dark gradient overlay + rounded frame,
+   with the floating nav and page content layered over it.
+
+   Note: the overlay is the one deliberate gradient in the UI. It exists only
+   to keep text legible over a photo/render. Everything else stays flat.
+   ========================================================================== */
+.hero-wrap { position: relative; padding: 12px 12px 18px; }
+
+/* The hero (and its floating nav) is always dark, whatever the page theme:
+   scope dark tokens so every control placed on it adapts. */
+.on-dark {
+  --paper: #0c0c0b;
+  --paper-2: rgba(239, 235, 226, 0.07);
+  --paper-3: rgba(239, 235, 226, 0.14);
+  --ink: #efebe2;
+  --ink-2: #d4cec1;
+  --muted: #a8a295;
+  --rule: rgba(239, 235, 226, 0.16);
+  --rule-strong: rgba(239, 235, 226, 0.4);
+  --accent: #ea5534;
+  --ok: #5fc286;
+  --tip-bg: #efebe2; --tip-fg: #151515; --tip-muted: #5a5650; --tip-rule: #cbc4b4;
+  color-scheme: dark;
+  color: var(--ink);
+}
+
+.hero {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  min-height: clamp(320px, 30vw, 430px);
+  border-radius: 18px;
+  overflow: hidden;
+  background: #0c0c0b;
+  color: var(--ink);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04), 0 18px 40px -24px rgba(0, 0, 0, 0.55);
+  animation: hero-in 0.7s var(--ease-out) both;
+}
+/* Opacity only: a (filling) transform animation would make .hero the
+   containing block for position:fixed, trapping the pinned nav inside it. */
+@keyframes hero-in { from { opacity: 0; } }
+
+/* ---- layer 1: the image ------------------------------------------------- */
+.hero__img {
+  position: absolute;
+  inset: -2%;
+  z-index: -2;
+  background: #0c0c0b url('/hero-datacenter.jpg') no-repeat;
+  background-size: cover;
+  background-position: 50% 45%;
+  transform-origin: 75% 50%;
+  animation: hero-zoom 1.8s var(--ease-out) both, hero-drift 38s ease-in-out 1.8s infinite alternate;
+  transition: background-position 1.2s var(--ease-in-out);
+}
+/* Each section frames the image differently; switching tabs pans the shot. */
+.hero--ai .hero__img { background-position: 72% 20%; }
+.hero--reports .hero__img { background-position: 92% 75%; }
+@keyframes hero-zoom { from { transform: scale(1.12); filter: brightness(0.6); } to { transform: scale(1.02); filter: none; } }
+@keyframes hero-drift { from { transform: scale(1.02) translate3d(0, 0, 0); } to { transform: scale(1.07) translate3d(-1.2%, -1%, 0); } }
+
+/* ---- layer 2: dark gradient overlay ------------------------------------- */
+.hero__shade {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(180deg, rgba(10, 10, 9, 0.7) 0%, rgba(10, 10, 9, 0) 34%, rgba(10, 10, 9, 0) 55%, rgba(10, 10, 9, 0.9) 100%),
+    linear-gradient(90deg, rgba(10, 10, 9, 0.95) 0%, rgba(10, 10, 9, 0.82) 30%, rgba(10, 10, 9, 0.32) 66%, rgba(10, 10, 9, 0.5) 100%);
+}
+
+/* ---- layer 3: floating nav ---------------------------------------------- */
+.hero__nav-spacer { height: 82px; }
+.hero__navbox { position: absolute; top: 26px; left: 26px; right: 26px; z-index: 30; min-height: 56px; }
+.nav--float {
+  position: relative;
+  top: auto;
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  background: rgba(14, 14, 13, 0.55);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  backdrop-filter: blur(14px) saturate(1.2);
+  animation: nav-float-in 0.6s var(--ease-out) both 0.15s;
+}
+@keyframes nav-float-in { from { opacity: 0; transform: translateY(-10px); } }
+.nav--float .nav__row { min-height: 54px; padding: 0 14px 0 18px; }
+.nav--float .nav__links a { color: var(--muted); }
+.nav--float .nav__links a.is-active, .nav--float .nav__links a:hover { color: var(--ink); }
+.nav--float .nav__n { color: rgba(239, 235, 226, 0.35); }
+.nav--float .nav__bar { bottom: 0; height: 3px; border-radius: 2px 2px 0 0; }
+.nav--float .btn { border-radius: 8px; }
+.nav--float .theme-toggle, .nav--float .chip { border-radius: 6px; }
+.nav--float .chip { border-color: var(--rule-strong); }
+.nav--float .stream { color: var(--ink-2); }
+
+/* Scrolled past the hero: the same nav pins to the top as a floating bar. */
+.nav--float.is-stuck {
+  position: fixed;
+  top: 10px;
+  left: 24px;
+  right: 24px;
+  z-index: 40;
+  background: rgba(12, 12, 11, 0.86);
+  box-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.6);
+  animation: nav-pin 0.35s var(--ease-out) both;
+}
+@keyframes nav-pin { from { opacity: 0; transform: translateY(-14px); } }
+
+/* ---- layer 3: page content ---------------------------------------------- */
+.hero__kicker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 22px 32px 0;
+  font-size: 11.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  animation: page-in 0.5s var(--ease-out) both 0.25s;
+}
+.hero__kicker span { color: var(--accent); }
+.hero__kicker i { width: 28px; height: 1px; background: var(--rule-strong); }
+
+.hero__slot { display: grid; align-content: end; min-width: 0; }
+.hero__title {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 18px;
+  flex-wrap: wrap;
+  padding: 10px 32px 26px;
+  animation: page-in 0.55s var(--ease-out) both 0.3s;
+}
+.hero__title h1 {
+  margin: 0;
+  font-size: clamp(44px, 6vw, 92px);
+  line-height: 0.88;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.45);
+}
+.hero__title p { margin: 12px 0 0; font-size: 12px; color: var(--ink-2); }
+.hero__title .title-sub { margin-top: 12px !important; }
+.hero__title .tabs { background: rgba(14, 14, 13, 0.5); border-radius: 8px; overflow: hidden; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.hero__title .btn { border-radius: 8px; }
+.hero__title .range__pop { border-radius: 10px; box-shadow: 0 18px 40px -12px rgba(0, 0, 0, 0.7); }
+.hero__title .alert-link { color: #ff8a7a; }
+
+/* Photo credit (required by the image's CC BY-SA licence). */
+.hero__credit {
+  position: absolute;
+  top: 100px;
+  right: 30px;
+  font-size: 10px;
+  color: rgba(239, 235, 226, 0.55);
+  text-decoration: none;
+  animation: page-in 0.5s var(--ease-out) both 0.5s;
+}
+.hero__credit:hover, .hero__credit:focus-visible { color: var(--ink); text-decoration: underline; }
+
+/* Ticker becomes a translucent strip along the hero's bottom edge. */
+.hero .ticker {
+  border-bottom: 0;
+  border-top: 1px solid var(--rule);
+  background: rgba(10, 10, 9, 0.62);
+  color: var(--ink);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+.hero .ticker__item { border-right-color: var(--rule); }
+.hero .ticker--idle { color: var(--muted); }
+
+@media (max-width: 1100px) {
+  .hero__nav-spacer { height: 124px; }
+  .nav--float .nav__row { padding: 10px 12px 0; }
+  .nav--float .nav__links { margin: 6px -12px 0; padding: 0 12px; border-top-color: var(--rule); }
+  .nav--float.is-stuck { left: 12px; right: 12px; }
+}
+@media (max-width: 760px) {
+  .hero-wrap { padding: 8px 8px 14px; }
+  .hero { border-radius: 14px; min-height: 0; }
+  .hero__navbox { top: 16px; left: 16px; right: 16px; }
+  .hero__nav-spacer { height: 128px; }
+  .hero__kicker { margin: 16px 16px 0; }
+  /* In flow on phones, on its own line under the ticker. */
+  .hero__credit { position: static; display: block; padding: 5px 12px 7px; text-align: right; }
+  .hero__title { padding: 8px 16px 20px; }
+  .hero__title h1 { font-size: 40px; }
+  .nav--float.is-stuck { left: 8px; right: 8px; top: 6px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero__img { animation: none; transform: none; }
+}
+@media print {
+  .hero-wrap { display: none !important; }
+}

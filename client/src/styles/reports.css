@@ -1,0 +1,132 @@
+/* ==========================================================================
+   Reports: month index + printable statement
+   ========================================================================== */
+.reports {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 1px;
+  background: var(--rule);
+  border-top: 1px solid var(--rule-strong);
+  border-bottom: 1px solid var(--rule);
+}
+.reports > * { min-width: 0; }
+.reports__aside { padding: 18px 20px; background: var(--paper); }
+.reports__main { padding: 24px 28px 40px; background: var(--paper-2); min-width: 0; }
+.aside-h { margin: 0 0 12px; font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-2); }
+
+.backfill { margin-bottom: 14px; padding: 10px 12px; border: 1px solid var(--ink); }
+.backfill p { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 11.5px; }
+.backfill__bar { height: 4px; margin: 8px 0; background: var(--paper-3); }
+.backfill__bar i { display: block; height: 100%; background: var(--accent); transform-origin: left; transition: transform 0.6s var(--ease-out); }
+
+.months { display: grid; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--ink); }
+.months li { animation: row-in 0.4s var(--ease-out) both; animation-delay: var(--d); }
+.month {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 10px;
+  padding: 12px 10px;
+  border-bottom: 1px solid var(--rule);
+  text-decoration: none;
+  color: var(--ink);
+  transition: background 0.15s, color 0.15s, padding 0.25s var(--ease-out);
+}
+.month:hover { background: var(--paper-2); padding-left: 16px; }
+.month.is-active { background: var(--ink); color: var(--paper); padding-left: 16px; }
+.month__name { font-size: 16px; font-weight: 700; }
+.month__status { align-self: center; font-size: 10px; padding: 1px 5px; border: 1px solid currentColor; }
+.month__cost { font-size: 14px; }
+.month__meta { grid-column: 1 / -1; font-size: 11px; opacity: 0.65; }
+.status--complete { color: var(--ok); }
+.status--in_progress { color: var(--accent); }
+.status--partial { color: var(--warn); }
+.month.is-active .month__status { color: var(--paper); }
+
+/* ---- statement document ----------------------------------------------- */
+.doc {
+  max-width: 1020px;
+  margin: 0 auto;
+  padding: 36px 40px 32px;
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  animation: doc-in 0.55s var(--ease-out) both;
+}
+@keyframes doc-in { from { opacity: 0; transform: translateY(16px); } }
+.doc--loading { display: grid; gap: 12px; }
+.doc-loading { display: flex; align-items: center; gap: 10px; margin: 0 0 6px; font-size: 12px; color: var(--muted); }
+.doc-sk-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 8px; }
+.mt16 { margin-top: 16px; }
+
+.doc-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding-bottom: 18px; border-bottom: 3px solid var(--ink); }
+.doc-kicker { margin: 0 0 8px; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); }
+.doc-title { margin: 0; font-size: clamp(36px, 4.6vw, 64px); line-height: 0.92; font-weight: 700; letter-spacing: -0.02em; text-transform: uppercase; }
+.doc-meta { margin: 12px 0 0; font-size: 11px; color: var(--muted); }
+.stamp {
+  flex: none;
+  padding: 6px 10px;
+  border: 2px solid currentColor;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  transform: rotate(-4deg);
+  animation: stamp 0.5s var(--ease-out) both 0.35s;
+}
+@keyframes stamp { from { opacity: 0; transform: rotate(-4deg) scale(1.6); } }
+
+.doc-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 6px; }
+
+.doc-sec { padding: 22px 0 6px; break-inside: avoid; }
+.doc-sec__h { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; padding-bottom: 6px; border-bottom: 1px solid var(--ink); }
+.doc-sec__h > .mono:first-child { font-size: 11px; color: var(--accent); }
+.doc-sec__h h3 { margin: 0; font-size: 15px; letter-spacing: 0.05em; text-transform: uppercase; }
+.doc-sec__note { margin-left: auto; font-size: 10.5px; }
+
+.doc-figs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin: 0; background: var(--rule); border: 1px solid var(--rule); }
+.doc-figs > div { padding: 12px 14px; background: var(--paper); }
+.doc-figs dt { font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); }
+.doc-figs dd { margin: 6px 0 0; font-size: 22px; font-weight: 500; }
+.doc-figs dd.doc-fig-sub { margin-top: 4px; font-size: 11px; font-weight: 400; }
+
+.doc-two { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+.doc-two > * { min-width: 0; }
+.doc-callout { margin: 0 0 14px; padding: 12px 14px; border-left: 4px solid var(--accent); background: var(--paper-2); font-size: 14.5px; line-height: 1.5; }
+.doc-notes { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.55; color: var(--ink-2); }
+.doc-end { margin: 22px 0 0; text-align: center; font-size: 11px; color: var(--muted); }
+
+.delta { font-size: 11.5px; white-space: nowrap; }
+.delta--bad { color: var(--crit); }
+.delta--good { color: var(--ok); }
+.share-cell { display: inline-flex; align-items: center; gap: 8px; }
+.share-cell .meter--inline { width: 50px; }
+
+@media (max-width: 1100px) {
+  .reports { grid-template-columns: 1fr; }
+  .months { grid-auto-flow: column; grid-auto-columns: 210px; overflow-x: auto; border-top: 0; }
+  .month { border: 1px solid var(--rule); margin-right: -1px; }
+  .doc-two { grid-template-columns: 1fr; gap: 0; }
+}
+@media (max-width: 760px) {
+  .reports__main { padding: 12px; }
+  .doc { padding: 20px 16px; max-width: 100%; }
+  .doc .tbl { display: block; overflow-x: auto; white-space: nowrap; }
+  .doc-title { font-size: 40px; }
+  .stamp { align-self: flex-start; }
+  .doc-head { flex-direction: column; }
+  .doc-figs { grid-template-columns: 1fr 1fr; }
+  .doc-sk-grid { grid-template-columns: 1fr 1fr; }
+}
+
+/* ---- print: the statement only, on white paper ------------------------ */
+@media print {
+  @page { margin: 14mm; }
+  body, .dash, .reports, .reports__main { background: #fff !important; }
+  .nav, .top-progress, .ticker, .dash-foot, .no-print, .doc-actions, .reports__aside { display: none !important; }
+  .reports { display: block; border: 0; }
+  .reports__main { padding: 0; }
+  .doc { max-width: none; border: 0; padding: 0; animation: none; }
+  .reveal, .page, .bar, .stamp, .doc * { animation: none !important; clip-path: none !important; }
+  .tooltip { display: none !important; }
+  .doc-sec { break-inside: avoid; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
