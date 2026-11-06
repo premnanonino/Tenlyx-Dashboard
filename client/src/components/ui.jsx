@@ -17,7 +17,7 @@ export function Panel({ n, title, aside, children, className = '', busy, error, 
         {aside && <div className="panel__aside">{aside}</div>}
       </header>
       <div className={`panel__body ${busy ? 'is-busy' : ''}`}>{children}</div>
-      {error && <p className="panel__error mono">Request failed: {error.message}</p>}
+      {error && <p className="panel__error mono" role="alert">Couldn't load this panel. It will retry on the next update.</p>}
     </section>
   );
 }

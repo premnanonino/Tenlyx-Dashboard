@@ -294,7 +294,7 @@ export default function Reports() {
             </section>
           )}
           {report.error && month ? (
-            <div className="doc"><p className="panel__error mono">Could not generate {month}: {report.error.message}</p></div>
+            <div className="doc"><p className="panel__error mono" role="alert">Couldn't load the statement for {month}. Try again in a moment.</p></div>
           ) : r ? <Statement key={r.month} r={r} /> : <DocSkeleton month={month} />}
         </div>
       </div>

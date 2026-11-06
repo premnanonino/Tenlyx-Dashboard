@@ -30,8 +30,8 @@ import { createAuth } from './auth/auth.js';
 const log = createLogger('tlxmon');
 
 // Fail closed: never serve billing data without a configured login.
-if (!config.auth.email || !config.auth.passwordHash.startsWith('scrypt$')) {
-  log.error('login not configured', { fix: 'run: npm --prefix server run set-password -- you@example.com' });
+if (!config.auth.emailDomain || !config.auth.passwordHash.startsWith('scrypt$')) {
+  log.error('login not configured', { fix: 'run: npm --prefix server run set-password' });
   process.exit(1);
 }
 // Fail closed: there is no demo mode; without a key there is nothing to show.

@@ -22,13 +22,18 @@ export default function Login() {
   const [error, setError] = useState(null);
   const [shake, setShake] = useState(0);
   const [checking, setChecking] = useState(true);
+  const [DOMAIN, setDomain] = useState('courserev.ai');
   const emailRef = useRef(null);
   const errRef = useRef(null);
 
   // Already signed in? Skip the form.
   useEffect(() => {
     api('/auth/me')
-      .then((me) => (me.authenticated ? navigate(next, { replace: true }) : setChecking(false)))
+      .then((me) => {
+        if (me.authenticated) return navigate(next, { replace: true });
+        if (me.emailDomain) setDomain(me.emailDomain);
+        return setChecking(false);
+      })
       .catch(() => setChecking(false));
   }, [navigate, next]);
 
@@ -37,6 +42,14 @@ export default function Login() {
   const submit = async (e) => {
     e.preventDefault();
     if (busy) return;
+    // Check the domain locally first so a typo doesn't use up a login attempt.
+    const at = email.trim().toLowerCase().split('@');
+    if (at.length !== 2 || !at[0] || at[1] !== DOMAIN) {
+      setError(`Use your @${DOMAIN} email address.`);
+      setShake((x) => x + 1);
+      setTimeout(() => errRef.current?.focus(), 0);
+      return;
+    }
     setBusy(true); setError(null);
     try {
       await api('/auth/login', { method: 'POST', body: { email, password } });
@@ -45,9 +58,8 @@ export default function Login() {
       setError(
         err.status === 429 ? 'Too many attempts. Wait a minute and try again.'
           : err.status === 401 ? 'Invalid email or password.'
-            : err.status === 502 || err.status === 504 || err.data?.error === 'backend_unavailable' ? 'API server is not running. Start it with npm run dev (port 8787).'
-              : err.status === 403 ? `Request blocked by the server's origin check (${err.data?.origin ?? 'unknown origin'}). Add it to ALLOWED_ORIGINS.`
-                : 'Could not sign in: unexpected server error. Check the server log.',
+            : err.status === 400 && err.data?.reason === 'domain' ? `Use your @${DOMAIN} email address.`
+              : "Couldn't sign in right now. Please try again in a moment.",
       );
       setShake((x) => x + 1);
       setPassword('');
@@ -72,8 +84,8 @@ export default function Login() {
           <span>console<em>.</em></span>
         </div>
         <ul className="login__log mono">
-          <li><b>01</b> single operator account</li>
-          <li><b>02</b> no self sign-up</li>
+          <li><b>01</b> @{DOMAIN} accounts only</li>
+          <li><b>02</b> one shared team password</li>
           <li><b>03</b> session: httponly · samesite strict</li>
           <li><b>04</b> 5 attempts, then throttled</li>
         </ul>
@@ -93,7 +105,7 @@ export default function Login() {
             data-shake={shake > 0 || undefined} aria-describedby={error ? 'login-error' : undefined}>
             <p className="login__kicker mono"><span>01</span> Restricted</p>
             <h1>Sign in</h1>
-            <p className="login__sub">Use the operator credentials configured on the server.</p>
+            <p className="login__sub">Use your @{DOMAIN} email and the team password.</p>
 
             {error && (
               <p id="login-error" className="login__error" role="alert" tabIndex={-1} ref={errRef}>{error}</p>
@@ -101,7 +113,7 @@ export default function Login() {
 
             <label className="field-l">
               <span>Email</span>
-              <input ref={emailRef} type="email" autoComplete="username" inputMode="email" required
+              <input ref={emailRef} type="email" autoComplete="username" inputMode="email" required placeholder={`you@${DOMAIN}`}
                 value={email} onChange={(e) => setEmail(e.target.value)} aria-invalid={!!error} />
             </label>
 
@@ -126,7 +138,7 @@ export default function Login() {
               <span aria-hidden>→</span>
             </button>
 
-            <p className="login__foot mono">No account? Accounts can't be created here. Ask the operator.</p>
+            <p className="login__foot mono">Don't have the password? Ask your team admin.</p>
           </form>
         )}
       </section>

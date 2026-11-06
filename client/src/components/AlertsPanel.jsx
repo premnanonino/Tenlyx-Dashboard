@@ -28,7 +28,7 @@ export default function AlertsPanel({ data, onSaved, now }) {
       setMsg('saved');
       onSaved?.();
     } catch (err) {
-      setMsg(err.message);
+      setMsg("couldn't save, try again");
     } finally {
       setSaving(false);
     }

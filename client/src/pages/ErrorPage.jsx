@@ -3,12 +3,14 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { ThemeToggle } from '../lib/theme.jsx';
 import { useNow } from '../lib/hooks.js';
 import { utcTime } from '../lib/format.js';
-import { errorReport, makeRef, suggestRoute } from '../lib/errors.js';
+import { makeRef, suggestRoute } from '../lib/errors.js';
 import '../styles/error.css';
 
 /*
  * One page for every failure: 404, render crash, stale deploy, offline.
  * Statically bundled (never lazy) so it renders even when chunks fail.
+ * Deliberately shows no error messages, stacks or setup hints: visitors
+ * see a plain explanation and a reference id, nothing about internals.
  */
 const KINDS = {
   notfound: {
@@ -17,7 +19,7 @@ const KINDS = {
   },
   crash: {
     code: '500', status: 'Render error', stamp: 'Failed', title: ['Something', 'broke'],
-    lead: 'This screen hit an error while drawing. It happened in your browser: no data was changed and nothing was charged.',
+    lead: 'This screen ran into a problem. No data was changed and nothing was charged. Try again, or come back in a moment.',
   },
   chunk: {
     code: '410', status: 'Stale version', stamp: 'Expired', title: ['New version', 'deployed'],
@@ -38,7 +40,7 @@ const subscribeOnline = (cb) => {
 };
 const useOnline = () => useSyncExternalStore(subscribeOnline, () => navigator.onLine);
 
-export default function ErrorPage({ kind = 'notfound', error = null, componentStack = '', onRetry, embedded = false }) {
+export default function ErrorPage({ kind = 'notfound', onRetry, embedded = false }) {
   const k = KINDS[kind] ?? KINDS.crash;
   const location = useLocation();
   const navigate = useNavigate();
@@ -47,15 +49,9 @@ export default function ErrorPage({ kind = 'notfound', error = null, componentSt
   const headRef = useRef(null);
   const [issuedAt] = useState(() => Date.now());
   const [ref] = useState(makeRef);
-  const [copy, setCopy] = useState(null); // null | 'ok' | 'fail'
-  const [detailsOpen, setDetailsOpen] = useState(false);
 
   const path = location.pathname + location.search;
   const suggestion = useMemo(() => (kind === 'notfound' ? suggestRoute(location.pathname) : null), [kind, location.pathname]);
-  const report = useMemo(
-    () => errorReport({ ref, code: k.code, status: k.status, issuedAt, error, componentStack }),
-    [ref, k, issuedAt, error, componentStack],
-  );
   const issued = new Date(issuedAt).toISOString().slice(0, 19).replace('T', ' ');
   const canGoBack = typeof window !== 'undefined' && window.history.length > 1;
   const reload = () => window.location.reload();
@@ -84,17 +80,6 @@ export default function ErrorPage({ kind = 'notfound', error = null, componentSt
 
   // Offline: lazy() caches the failed import, so recover with a full reload.
   useEffect(() => { if (kind === 'offline' && online) window.location.reload(); }, [kind, online]);
-
-  const copyReport = async () => {
-    try {
-      await navigator.clipboard.writeText(report);
-      setCopy('ok');
-    } catch {
-      setCopy('fail');
-      setDetailsOpen(true);
-    }
-    setTimeout(() => setCopy(null), 3500);
-  };
 
   const primary = {
     notfound: <Primary to="/dashboard">Open dashboard</Primary>,
@@ -149,22 +134,9 @@ export default function ErrorPage({ kind = 'notfound', error = null, componentSt
               {kind === 'crash' && <button type="button" className="errp__btn" onClick={reload}>Reload page</button>}
               {kind !== 'notfound' && !embedded && <Link className="errp__btn" to="/dashboard">Open dashboard</Link>}
               {kind !== 'notfound' && embedded && <Link className="errp__btn" to="/dashboard">Overview</Link>}
-              {error && <button type="button" className="errp__btn" onClick={copyReport}>Copy error report</button>}
               {!embedded && kind === 'notfound' && <Link className="errp__btn" to="/dashboard/reports">Statements</Link>}
             </div>
           </div>
-
-          <p className="errp__copied mono" role="status" aria-live="polite">
-            {copy === 'ok' && 'Report copied. Paste it wherever you track issues.'}
-            {copy === 'fail' && 'Clipboard blocked by the browser. Select the report below and copy it.'}
-          </p>
-
-          {error && (
-            <details className="errp__details" open={detailsOpen} onToggle={(e) => setDetailsOpen(e.currentTarget.open)}>
-              <summary className="mono">Technical details</summary>
-              <pre className="mono">{report}</pre>
-            </details>
-          )}
 
           <p className="errp__foot mono">ref {ref} · {issued} UTC</p>
         </div>
@@ -179,7 +151,7 @@ export default function ErrorPage({ kind = 'notfound', error = null, componentSt
         )}
         <Matrix code={k.code} />
         {!embedded && (
-          <Receipt k={k} ref_={ref} issued={issued} path={path} error={error} />
+          <Receipt k={k} ref_={ref} issued={issued} path={path} />
         )}
       </aside>
     </main>
@@ -247,7 +219,7 @@ function Matrix({ code }) {
 /* ---- printed receipt ------------------------------------------------------ */
 const TEAR = `0,0 ${Array.from({ length: 41 }, (_, i) => `${i * 5},${i % 2 ? 7 : 0}`).join(' ')} 200,0`;
 
-function Receipt({ k, ref_, issued, path, error }) {
+function Receipt({ k, ref_, issued, path }) {
   return (
     <div className="errp__printer">
       <div className="errp__slot" aria-hidden />
@@ -259,7 +231,6 @@ function Receipt({ k, ref_, issued, path, error }) {
             <div><dt>Issued</dt><dd>{issued}</dd></div>
             <div><dt>Request</dt><dd title={path}>{path}</dd></div>
             <div><dt>Status</dt><dd>{k.code} · {k.status}</dd></div>
-            {error && <div><dt>Error</dt><dd title={error.message}>{error.name || 'Error'}</dd></div>}
             <div><dt>Charge</dt><dd>$0.00</dd></div>
           </dl>
           <div className="errp__r-total mono"><span>Total due</span><b>$0.00</b></div>

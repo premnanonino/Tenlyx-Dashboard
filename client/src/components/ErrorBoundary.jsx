@@ -2,23 +2,20 @@ import { Component } from 'react';
 
 /**
  * Catches render errors (including failed lazy-chunk loads) below it and
- * renders `fallback({ error, componentStack, reset })` instead of a blank
- * screen. Changing `resetKey` (e.g. the pathname) clears the error, so
- * navigating away from a broken screen recovers without a reload.
+ * renders `fallback({ error, reset })` instead of a blank screen. The error
+ * is only used to pick which page to show; its details are never displayed.
+ * Changing `resetKey` (e.g. the pathname) clears the error, so navigating
+ * away from a broken screen recovers without a reload.
  */
 export class ErrorBoundary extends Component {
   constructor(props) {
     super(props);
-    this.state = { error: null, componentStack: '' };
-    this.reset = () => this.setState({ error: null, componentStack: '' });
+    this.state = { error: null };
+    this.reset = () => this.setState({ error: null });
   }
 
   static getDerivedStateFromError(error) {
     return { error };
-  }
-
-  componentDidCatch(error, info) {
-    this.setState({ componentStack: info?.componentStack || '' });
   }
 
   componentDidUpdate(prev) {
@@ -26,8 +23,8 @@ export class ErrorBoundary extends Component {
   }
 
   render() {
-    const { error, componentStack } = this.state;
-    if (error) return this.props.fallback({ error, componentStack, reset: this.reset });
+    const { error } = this.state;
+    if (error) return this.props.fallback({ error, reset: this.reset });
     return this.props.children;
   }
 }

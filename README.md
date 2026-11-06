@@ -14,7 +14,7 @@ It reads **only real data** from the Telnyx API. There is no simulator or demo m
 ```bash
 npm run install:all                                   # installs server/ and client/
 cp .env.example .env                                  # then set TELNYX_API_KEY (required)
-npm --prefix server run set-password -- you@example.com   # create the one login (prints a generated password)
+npm --prefix server run set-password                     # set the shared team password (prints it once)
 npm run dev                                           # API on :8787, UI on http://localhost:5173
 ```
 
@@ -31,16 +31,16 @@ Requirements: Node ≥ 20.12 (uses built-in `fetch`, `process.loadEnvFile`, `nod
 
 ---
 
-## Authentication (single account)
+## Authentication (team login)
 
 | | |
 |---|---|
-| Accounts | Exactly one: `ADMIN_EMAIL` + `ADMIN_PASSWORD_HASH` in `.env`. There is **no signup, invite or user-creation endpoint**, so no one else can register. |
-| Password storage | scrypt (N=16384, r=8, p=1, random 16-byte salt). The plain password is never stored. `set-password` writes the hash and `chmod 600`s `.env`. |
+| Accounts | Any email ending in `@courserev.ai` (`LOGIN_EMAIL_DOMAIN`) plus **one shared password** (`SHARED_PASSWORD_HASH` in `.env`). The domain must match exactly: sub-domains and look-alikes such as `courserev.ai.evil.com` are rejected. There is no signup endpoint. Each session records the email that signed in, and logins are logged with it. |
+| Password storage | scrypt (N=16384, r=8, p=1, random 16-byte salt). The plain password is never stored. `set-password` writes the hash and `chmod 600`s `.env`. To revoke access, rotate the password and restart (this ends every session). |
 | Sessions | Server-side store; the cookie holds only a random 256-bit id. `HttpOnly`, `SameSite=Strict`, `Secure` when `COOKIE_SECURE=1` (set this behind HTTPS). Sliding 12 h expiry (`SESSION_TTL_HOURS`). |
 | CSRF | SameSite=Strict, plus every non-GET request with a foreign `Origin` is rejected (403). |
 | Brute force | Login is token-bucket limited per IP: 5 attempts, then 1 every 12 s (429 with `Retry-After`). Failures get a small randomised delay. |
-| Enumeration | The email compare is constant-time, and a wrong email still runs a full scrypt against a dummy hash, so a wrong email and a wrong password look identical in both message and timing. |
+| Enumeration | There are no per-user accounts to enumerate. A wrong domain gets a clear "use your @courserev.ai email" message (the domain is public); a wrong password gets a generic error after a randomised delay. |
 | Coverage | Every `/api/*` route except `/health`, `/ready` and `/auth/*` requires a session, including the SSE stream and all CSV/JSON downloads. |
 | Frontend | `/login` page. The dashboard shell checks `/api/auth/me` before rendering, and any later 401 (expired session) sends you back to `/login?next=…`. Only `/dashboard…` paths are accepted as `next` (no open redirect). |
 
@@ -240,7 +240,7 @@ client/src/
 │  └─ shaders.js          GLSL: simplex noise, point cloud, arc packets, stars
 ├─ pages/
 │  ├─ Landing.jsx         3D page, boot loader, "Click here" → dive → /dashboard
-│  ├─ Login.jsx           single-account sign-in
+│  ├─ Login.jsx           team sign-in (@courserev.ai + shared password)
 │  ├─ Dashboard.jsx       Overview: figures, charts, ledger, internals
 │  ├─ AiPage.jsx          Conversational AI: most-used model, scorecard,
 │  │                      cost-vs-resolution scatter, leaderboard, assistants
@@ -357,7 +357,8 @@ See `.env.example`. Key settings:
 | `TELNYX_BACKFILL_DAYS` | 7 | first-sync window |
 | `POLL_BALANCE_MS` / `POLL_RECORDS_MS` | 30 s / 60 s | |
 | `ALERT_LOW_BALANCE`, `ALERT_RUNWAY_DAYS`, `ALERT_SPIKE_Z` | 250 / 7 / 3 | also editable in the UI |
-| `ADMIN_EMAIL` / `ADMIN_PASSWORD_HASH` | — (required) | the single login; set with `npm --prefix server run set-password -- <email>` |
+| `LOGIN_EMAIL_DOMAIN` | `courserev.ai` | email domain allowed to sign in |
+| `SHARED_PASSWORD_HASH` | — (required) | scrypt hash of the shared password; set with `npm --prefix server run set-password` |
 | `SESSION_TTL_HOURS` | 12 | sliding session lifetime |
 | `COOKIE_SECURE` | off | set to `1` when served over HTTPS |
 | `TELNYX_AI_RECORD_TYPES` | `ai-voice-assistant` | detail record types holding AI conversations (skipped if unsupported) |
@@ -395,7 +396,7 @@ The state lives in a single process on purpose: one poller per Telnyx account av
 │  │  │                      aiAnalytics, monthlyRollups, reports
 │  │  ├─ auth/               scrypt, sessions, login/logout/me, origin check
 │  │  └─ api/                routes, middleware, sseHub
-│  ├─ scripts/set-password.mjs   create/replace the single login
+│  ├─ scripts/set-password.mjs   set/rotate the shared password
 │  └─ test/dsa.test.js
 ├─ client/                   Vite + React + three
 ├─ scripts/dev.mjs           runs both dev servers

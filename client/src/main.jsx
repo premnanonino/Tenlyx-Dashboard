@@ -45,8 +45,8 @@ function RootBoundary({ children }) {
   return (
     <ErrorBoundary
       resetKey={pathname}
-      fallback={({ error, componentStack, reset }) => (
-        <ErrorPage kind={classify(error)} error={error} componentStack={componentStack} onRetry={reset} />
+      fallback={({ error, reset }) => (
+        <ErrorPage kind={classify(error)} onRetry={reset} />
       )}
     >
       {children}

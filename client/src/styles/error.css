@@ -126,26 +126,6 @@
 }
 .errp__btn:hover { background: var(--ink); color: var(--paper); }
 
-.errp__copied { min-height: 1em; margin: -4px 0 0; font-size: 11px; color: var(--ok); }
-.errp__copied:empty { display: none; }
-
-.errp__details summary { width: max-content; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); cursor: pointer; }
-.errp__details summary:hover { color: var(--ink); }
-.errp__details pre {
-  max-height: 240px;
-  margin: 10px 0 0;
-  padding: 12px 14px;
-  overflow: auto;
-  border: 1px solid var(--rule);
-  border-left: 4px solid var(--crit);
-  background: var(--paper-2);
-  font-size: 11.5px;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  word-break: break-word;
-  user-select: all;
-}
-
 .errp__foot { margin: 0; font-size: 11px; color: var(--muted); }
 
 /* ---- status display panel (fixed dark palette, like the login side) ---- */

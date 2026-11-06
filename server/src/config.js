@@ -50,8 +50,10 @@ export const config = Object.freeze({
     staleFactor: 5,
   }),
   auth: Object.freeze({
-    email: (process.env.ADMIN_EMAIL || '').trim(),
-    passwordHash: process.env.ADMIN_PASSWORD_HASH || '',
+    // Anyone with an address on this domain can sign in with the shared password.
+    emailDomain: (process.env.LOGIN_EMAIL_DOMAIN || 'courserev.ai').trim().toLowerCase().replace(/^@/, ''),
+    // scrypt hash of the one shared password (ADMIN_PASSWORD_HASH accepted for older .env files).
+    passwordHash: process.env.SHARED_PASSWORD_HASH || process.env.ADMIN_PASSWORD_HASH || '',
     sessionTtlMs: num(process.env.SESSION_TTL_HOURS, 12) * 3_600_000,
     secureCookie: process.env.COOKIE_SECURE === '1',
     // Extra origins allowed to send POST/PUT (e.g. a reverse proxy's public URL).

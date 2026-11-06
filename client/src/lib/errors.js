@@ -76,20 +76,3 @@ export function suggestRoute(pathname) {
   }
   return best && Number.isFinite(best.score) && best.to !== p ? { to: best.to, label: best.label } : null;
 }
-
-const trim = (s, n = 10) => String(s || '').trim().split('\n').slice(0, n).map((l) => l.trim()).join('\n');
-
-export function errorReport({ ref, code, status, issuedAt, error, componentStack }) {
-  return [
-    'TLX/MON error report',
-    `ref:     ${ref}`,
-    `status:  ${code} ${status}`,
-    `time:    ${new Date(issuedAt).toISOString()}`,
-    `url:     ${window.location.href}`,
-    error && `error:   ${error.name || 'Error'}: ${error.message || String(error)}`,
-    error?.stack && `stack:\n${trim(error.stack)}`,
-    componentStack && `components:\n${trim(componentStack, 8)}`,
-    `online:  ${navigator.onLine}`,
-    `agent:   ${navigator.userAgent}`,
-  ].filter(Boolean).join('\n');
-}

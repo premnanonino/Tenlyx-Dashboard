@@ -3,10 +3,12 @@ import express from 'express';
 import { TokenBucketLimiter } from '../dsa/TokenBucket.js';
 
 /**
- * Single-account authentication.
+ * Team authentication.
  *
- * - One email + scrypt password hash, both from the environment. There is
- *   no signup or user-creation endpoint: nobody else can get an account.
+ * - Any email address on the configured domain (default @courserev.ai)
+ *   plus one shared password, stored as a scrypt hash in the environment.
+ *   There is no signup or user-creation endpoint.
+ * - Each session is tied to the email that signed in, for audit logs.
  * - Server-side sessions: the cookie carries only a random 256-bit id;
  *   session state lives in memory with a sliding expiry.
  * - Cookie is HttpOnly + SameSite=Strict (+ Secure behind HTTPS), and
@@ -31,10 +33,12 @@ export function verifyPassword(password, stored) {
   return crypto.timingSafeEqual(key, expected);
 }
 
-const digest = (s) => crypto.createHash('sha256').update(String(s)).digest();
-const safeEqual = (a, b) => crypto.timingSafeEqual(digest(a), digest(b));
-// Used when the email is wrong, so that path costs the same as a real check.
-const DUMMY_HASH = hashPassword(crypto.randomBytes(16).toString('hex'));
+/** Exactly `local@domain`: no sub-domains, no look-alikes such as courserev.ai.evil.com. */
+export function isAllowedEmail(email, domain) {
+  const e = String(email ?? '').trim().toLowerCase();
+  const at = e.lastIndexOf('@');
+  return at > 0 && e.indexOf('@') === at && e.slice(at + 1) === domain && /^[a-z0-9._%+-]+$/.test(e.slice(0, at));
+}
 
 export class SessionStore {
   constructor({ ttlMs, max = 200 }) {
@@ -77,7 +81,7 @@ function readCookie(req, name) {
 }
 
 export function createAuth({ config, logger }) {
-  const { email: adminEmail, passwordHash, sessionTtlMs, secureCookie, allowedOrigins } = config.auth;
+  const { emailDomain, passwordHash, sessionTtlMs, secureCookie, allowedOrigins } = config.auth;
   const trusted = new Set(allowedOrigins.map((o) => o.replace(/\/$/, '').toLowerCase()));
   const sessions = new SessionStore({ ttlMs: sessionTtlMs });
   const attempts = new TokenBucketLimiter({ capacity: 5, refillPerSec: 1 / 12 }); // 5 tries, then 1 per 12s
@@ -124,25 +128,29 @@ export function createAuth({ config, logger }) {
     if (typeof email !== 'string' || typeof password !== 'string' || email.length > 254 || password.length > 256) {
       return res.status(400).json({ error: 'Email and password are required.' });
     }
-    const emailOk = safeEqual(email.trim().toLowerCase(), adminEmail.toLowerCase());
-    const passOk = verifyPassword(password, emailOk ? passwordHash : DUMMY_HASH);
-    if (!(emailOk && passOk)) {
-      logger.warn('login failed', { ip });
+    const who = email.trim().toLowerCase();
+    // The domain is public, so saying it's wrong leaks nothing.
+    if (!isAllowedEmail(who, emailDomain)) {
+      logger.warn('login rejected: email domain', { ip });
+      return res.status(400).json({ error: `Use your @${emailDomain} email address.`, reason: 'domain' });
+    }
+    if (!verifyPassword(password, passwordHash)) {
+      logger.warn('login failed', { ip, email: who });
       await new Promise((r) => setTimeout(r, 300 + Math.random() * 200));
       return res.status(401).json({ error: 'Invalid email or password.' });
     }
-    const id = sessions.create(adminEmail);
+    const id = sessions.create(who);
     res.set('set-cookie', cookie(id, Math.floor(sessionTtlMs / 1000)));
     res.set('cache-control', 'no-store');
-    logger.info('login ok', { ip });
-    return res.json({ email: adminEmail });
+    logger.info('login ok', { ip, email: who });
+    return res.json({ email: who });
   });
 
   router.get('/auth/me', (req, res) => {
     const s = sessions.get(readCookie(req, COOKIE));
     res.set('cache-control', 'no-store');
     // "Not signed in" is a normal answer here, not an error: 200 either way.
-    if (!s) return res.json({ authenticated: false });
+    if (!s) return res.json({ authenticated: false, emailDomain });
     return res.json({ authenticated: true, email: s.email, expiresAt: s.expiresAt });
   });
 

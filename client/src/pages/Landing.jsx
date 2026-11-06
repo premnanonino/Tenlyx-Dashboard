@@ -108,7 +108,7 @@ export default function Landing() {
           </div>
         </dl>
         <p className="lp-source mono">
-          {stats?.locked ? 'sign in to see live figures' : stats?.error ? 'backend offline — start the server on :8787' : ready ? 'source: api.telnyx.com/v2' : 'contacting backend…'}
+          {stats?.locked ? 'sign in to see live figures' : stats?.error ? 'live figures unavailable right now' : ready ? 'source: api.telnyx.com/v2' : 'contacting backend…'}
         </p>
       </section>
 
@@ -126,7 +126,7 @@ export default function Landing() {
       </footer>
 
       {webglError && (
-        <div className="lp-fallback mono">3D view unavailable ({webglError}). The dashboard still works.</div>
+        <div className="lp-fallback mono">3D view unavailable on this device. The dashboard still works.</div>
       )}
 
       <div className="wipe" aria-hidden />

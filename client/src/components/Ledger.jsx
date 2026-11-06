@@ -152,7 +152,7 @@ export default function Ledger({ tick, currency, range }) {
         </p>
       )}
 
-      {error && <p className="panel__error mono">Request failed: {error.message}</p>}
+      {error && <p className="panel__error mono" role="alert">Couldn't load records. Try again in a moment.</p>}
 
       {!result ? (
         <SkeletonRows rows={10} h={20} />

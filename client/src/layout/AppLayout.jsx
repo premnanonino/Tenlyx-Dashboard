@@ -225,8 +225,8 @@ function Shell({ user, location }) {
             {/* A broken section shows the error inside the dashboard; nav keeps working. */}
             <ErrorBoundary
               resetKey={location.pathname}
-              fallback={({ error, componentStack, reset }) => (
-                <ErrorPage kind={classify(error)} error={error} componentStack={componentStack} onRetry={reset} embedded />
+              fallback={({ error, reset }) => (
+                <ErrorPage kind={classify(error)} onRetry={reset} embedded />
               )}
             >
               <Outlet />
