@@ -1,6 +1,9 @@
 .landing {
-  --paper: #efebe2;
-  --night: #0c0c0b;
+  --paper: #ecf6f9;
+  --night: #09171b;
+  /* always a dark surface: use the on-dark accent in both themes */
+  --accent: #fab038;
+  --on-accent: #09171b;
   position: fixed;
   inset: 0;
   overflow: hidden;
@@ -28,14 +31,14 @@
   justify-content: space-between;
   align-items: center;
   padding: 22px 40px;
-  border-bottom: 1px solid #2a2926;
+  border-bottom: 1px solid #19414d;
   pointer-events: none;
   opacity: 0;
   transform: translateY(-8px);
   transition: opacity 0.6s var(--ease-out) 0.2s, transform 0.6s var(--ease-out) 0.2s;
 }
-.lp-top__nav { display: flex; align-items: center; gap: 16px; font-size: 13px; color: #a8a295; }
-.lp-top__sep { width: 24px; height: 1px; background: #4a4740; }
+.lp-top__nav { display: flex; align-items: center; gap: 16px; font-size: 13px; color: #8cc8d9; }
+.lp-top__sep { width: 24px; height: 1px; background: #19414d; }
 
 /* ---- copy column -------------------------------------------------------- */
 .lp-copy {
@@ -43,7 +46,7 @@
   left: 40px;
   top: 50%;
   transform: translateY(-50%);
-  width: min(520px, 44vw);
+  width: min(540px, 42vw);
   pointer-events: none;
 }
 .lp-copy > * { pointer-events: auto; }
@@ -57,14 +60,14 @@
   font-size: 12px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: #a8a295;
+  color: #8cc8d9;
 }
 .lp-index { color: var(--accent); }
-.lp-kicker::after { content: ''; flex: 0 0 48px; height: 1px; background: #4a4740; }
+.lp-kicker::after { content: ''; flex: 0 0 48px; height: 1px; background: #19414d; }
 
 .lp-title {
   margin: 0;
-  font-size: clamp(56px, 8.4vw, 132px);
+  font-size: clamp(48px, 6.6vw, 112px);
   line-height: 0.86;
   font-weight: 700;
   letter-spacing: -0.02em;
@@ -84,7 +87,7 @@
   max-width: 400px;
   font-size: 17px;
   line-height: 1.45;
-  color: #c9c3b6;
+  color: #b3dae6;
 }
 
 /* ---- the "Click here" button -------------------------------------------
@@ -157,16 +160,16 @@
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   margin: 34px 0 10px;
-  border-top: 1px solid #3a3833;
+  border-top: 1px solid #19414d;
 }
 .lp-readout > div { padding: 12px 12px 0 0; }
-.lp-readout > div + div { padding-left: 12px; border-left: 1px solid #3a3833; }
-.lp-readout dt { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: #8c867a; }
+.lp-readout > div + div { padding-left: 12px; border-left: 1px solid #19414d; }
+.lp-readout dt { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: #8cc8d9; }
 .lp-readout dd { margin: 6px 0 0; font-family: var(--font-mono); font-size: 18px; font-weight: 500; }
-.loading-dash { animation: blink-steps 1s steps(2) infinite; color: #6a655b; }
+.loading-dash { animation: blink-steps 1s steps(2) infinite; color: #338399; }
 @keyframes blink-steps { 50% { opacity: 0.3; } }
 
-.lp-source { margin: 10px 0 0; font-size: 11px; color: #77726a; }
+.lp-source { margin: 10px 0 0; font-size: 11px; color: #338399; }
 
 /* ---- bottom ------------------------------------------------------------- */
 .lp-bottom {
@@ -178,7 +181,7 @@
   justify-content: space-between;
   align-items: flex-end;
   font-size: 11px;
-  color: #a8a295;
+  color: #8cc8d9;
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.8s var(--ease-out) 0.5s;
@@ -197,9 +200,9 @@
   top: 90px;
   max-width: 320px;
   padding: 10px 12px;
-  border: 1px solid #4a4740;
+  border: 1px solid #19414d;
   font-size: 12px;
-  color: #c9c3b6;
+  color: #b3dae6;
 }
 
 /* ---- entrance (after boot) --------------------------------------------- */
@@ -218,20 +221,12 @@
 .is-booted .lp-readout { transition-delay: 0.45s; }
 .is-booted .lp-source { transition-delay: 0.55s; }
 
-/* ---- exit: copy drops away, then a paper panel wipes up ----------------- */
+/* ---- exit: copy drops away while the globe dives in (no light overlay) --- */
 .is-leaving .lp-copy > *, .is-leaving .lp-top, .is-leaving .lp-bottom {
   opacity: 0 !important;
   transform: translateY(-12px) !important;
   transition: opacity 0.35s ease, transform 0.35s ease !important;
 }
-.wipe {
-  position: absolute;
-  inset: 0;
-  background: var(--wipe-bg, #efebe2);
-  transform: translateY(100%);
-  pointer-events: none;
-}
-.is-leaving .wipe { transform: translateY(0); transition: transform 0.6s var(--ease-in-out) 0.85s; }
 
 /* ==========================================================================
    Boot loader
@@ -249,7 +244,7 @@
 }
 .boot--leaving { transform: translateY(-100%); }
 .boot__top { display: flex; justify-content: space-between; align-items: center; }
-.boot__meta { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.1em; color: #8c867a; }
+.boot__meta { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.1em; color: #8cc8d9; }
 
 .boot__log {
   align-self: center;
@@ -259,7 +254,7 @@
   font-family: var(--font-mono);
   font-size: 12.5px;
   line-height: 1.9;
-  color: #c9c3b6;
+  color: #b3dae6;
 }
 .boot__log li { animation: log-in 0.25s steps(4) both; }
 .boot__ok { display: inline-block; width: 28px; color: var(--accent); }
@@ -275,10 +270,10 @@
   font-variant-numeric: tabular-nums;
 }
 .boot__count span { font-size: 0.3em; color: var(--accent); margin-left: 6px; vertical-align: top; }
-.boot__bar { height: 2px; background: #2a2926; }
+.boot__bar { height: 2px; background: #19414d; }
 .boot__bar i { display: block; height: 100%; background: var(--accent); transform-origin: left; }
 .boot__ticks { display: grid; grid-template-columns: repeat(40, 1fr); gap: 4px; }
-.boot__ticks b { height: 8px; background: #2a2926; transition: background 0.1s; }
+.boot__ticks b { height: 8px; background: #19414d; transition: background 0.1s; }
 .boot__ticks b.on { background: var(--paper); }
 
 /* ==========================================================================

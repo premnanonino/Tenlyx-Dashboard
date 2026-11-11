@@ -70,6 +70,171 @@ export class SessionStore {
     for (const [id, s] of this.sessions) if (s.expiresAt <= now) this.sessions.delete(id);
     if (evictOldest && this.sessions.size >= this.max) this.sessions.delete(this.sessions.keys().next().value);
   }
+
+  count() { return this.sessions.size; }
+}
+
+/**
+ * Sessions in PostgreSQL (production): survive API restarts and deploys.
+ * Only a SHA-256 of the cookie value is stored, so a database dump does not
+ * contain usable session tokens. Same interface as SessionStore, async.
+ */
+export class PgSessionStore {
+  constructor({ pool, ttlMs }) {
+    this.pool = pool;
+    this.ttlMs = ttlMs;
+  }
+
+  #hash(id) { return crypto.createHash('sha256').update(String(id)).digest('hex'); }
+
+  async create(email) {
+    const id = crypto.randomBytes(32).toString('base64url');
+    await this.pool.query(
+      `INSERT INTO sessions (id_hash, email, expires_at) VALUES ($1, $2, now() + make_interval(secs => $3))`,
+      [this.#hash(id), email, this.ttlMs / 1000],
+    );
+    return id;
+  }
+
+  async get(id) {
+    if (!id) return null;
+    const { rows } = await this.pool.query(
+      'SELECT email, expires_at FROM sessions WHERE id_hash = $1 AND expires_at > now()',
+      [this.#hash(id)],
+    );
+    if (!rows[0]) return null;
+    let expiresAt = new Date(rows[0].expires_at).getTime();
+    // Sliding expiry, written at most every 5 minutes per session.
+    if (expiresAt - Date.now() < this.ttlMs - 5 * 60_000) {
+      await this.pool.query(
+        'UPDATE sessions SET expires_at = now() + make_interval(secs => $2) WHERE id_hash = $1',
+        [this.#hash(id), this.ttlMs / 1000],
+      );
+      expiresAt = Date.now() + this.ttlMs;
+    }
+    return { email: rows[0].email, expiresAt };
+  }
+
+  async destroy(id) {
+    if (id) await this.pool.query('DELETE FROM sessions WHERE id_hash = $1', [this.#hash(id)]);
+  }
+
+  async sweep() {
+    await this.pool.query('DELETE FROM sessions WHERE expires_at <= now()');
+  }
+
+  async count() {
+    const { rows } = await this.pool.query('SELECT count(*)::int AS n FROM sessions WHERE expires_at > now()');
+    return rows[0].n;
+  }
+}
+
+/**
+ * Sessions in libSQL / SQLite (local file or Turso). Same behaviour as
+ * PgSessionStore: SHA-256 of the cookie only, sliding expiry written at most
+ * every 5 minutes, expiry checked on the database clock. Times are epoch ms.
+ */
+const LIBSQL_NOW_MS = "CAST(unixepoch('subsec') * 1000 AS INTEGER)";
+
+export class LibsqlSessionStore {
+  constructor({ client, ttlMs }) {
+    this.client = client;
+    this.ttlMs = ttlMs;
+  }
+
+  #hash(id) { return crypto.createHash('sha256').update(String(id)).digest('hex'); }
+
+  async create(email) {
+    const id = crypto.randomBytes(32).toString('base64url');
+    await this.client.execute({
+      sql: `INSERT INTO sessions (id_hash, email, expires_at) VALUES (?, ?, ${LIBSQL_NOW_MS} + CAST(? AS INTEGER))`,
+      args: [this.#hash(id), email, Math.round(this.ttlMs)],
+    });
+    return id;
+  }
+
+  async get(id) {
+    if (!id) return null;
+    const rs = await this.client.execute({
+      sql: `SELECT email, expires_at FROM sessions WHERE id_hash = ? AND expires_at > ${LIBSQL_NOW_MS}`,
+      args: [this.#hash(id)],
+    });
+    const row = rs.rows[0];
+    if (!row) return null;
+    let expiresAt = Number(row.expires_at);
+    // Sliding expiry, written at most every 5 minutes per session.
+    if (expiresAt - Date.now() < this.ttlMs - 5 * 60_000) {
+      await this.client.execute({
+        sql: `UPDATE sessions SET expires_at = ${LIBSQL_NOW_MS} + CAST(? AS INTEGER) WHERE id_hash = ?`,
+        args: [Math.round(this.ttlMs), this.#hash(id)],
+      });
+      expiresAt = Date.now() + this.ttlMs;
+    }
+    return { email: row.email, expiresAt };
+  }
+
+  async destroy(id) {
+    if (id) await this.client.execute({ sql: 'DELETE FROM sessions WHERE id_hash = ?', args: [this.#hash(id)] });
+  }
+
+  async sweep() {
+    await this.client.execute(`DELETE FROM sessions WHERE expires_at <= ${LIBSQL_NOW_MS}`);
+  }
+
+  async count() {
+    const rs = await this.client.execute(`SELECT count(*) AS n FROM sessions WHERE expires_at > ${LIBSQL_NOW_MS}`);
+    return Number(rs.rows[0].n);
+  }
+}
+
+/**
+ * Short-lived in-memory cache in front of a database session store.
+ * Every API request checks the session; without this, each check is a
+ * database round trip (~35 ms to Turso). A verified session is reused for
+ * `ttlMs` (default 30 s); sign-out on this server clears it at once, and a
+ * session expiring in the database is never served past its expiry.
+ * Trade-off: with several API servers, a sign-out on one reaches the others
+ * within `ttlMs`.
+ */
+export class CachedSessionStore {
+  constructor(inner, { ttlMs = 30_000, max = 2_000 } = {}) {
+    this.inner = inner;
+    this.ttlMs = ttlMs;
+    this.max = max;
+    this.cache = new Map(); // cookie id -> { session, at }
+    this.stats = { hits: 0, misses: 0 };
+  }
+
+  create(email) { return this.inner.create(email); }
+
+  async get(id) {
+    if (!id) return null;
+    const now = Date.now();
+    const hit = this.cache.get(id);
+    if (hit && now - hit.at < this.ttlMs && hit.session.expiresAt > now) { this.stats.hits++; return hit.session; }
+    this.stats.misses++;
+    const session = await this.inner.get(id);
+    if (session) {
+      if (this.cache.size >= this.max) this.cache.delete(this.cache.keys().next().value);
+      this.cache.set(id, { session, at: now });
+    } else {
+      this.cache.delete(id);
+    }
+    return session;
+  }
+
+  async destroy(id) {
+    this.cache.delete(id);
+    return this.inner.destroy(id);
+  }
+
+  async sweep() {
+    const now = Date.now();
+    for (const [id, e] of this.cache) if (now - e.at >= this.ttlMs) this.cache.delete(id);
+    return this.inner.sweep();
+  }
+
+  count() { return this.inner.count(); }
 }
 
 function readCookie(req, name) {
@@ -80,10 +245,10 @@ function readCookie(req, name) {
   return null;
 }
 
-export function createAuth({ config, logger }) {
+export function createAuth({ config, logger, sessionStore = null }) {
   const { emailDomain, passwordHash, sessionTtlMs, secureCookie, allowedOrigins } = config.auth;
   const trusted = new Set(allowedOrigins.map((o) => o.replace(/\/$/, '').toLowerCase()));
-  const sessions = new SessionStore({ ttlMs: sessionTtlMs });
+  const sessions = sessionStore ?? new SessionStore({ ttlMs: sessionTtlMs });
   const attempts = new TokenBucketLimiter({ capacity: 5, refillPerSec: 1 / 12 }); // 5 tries, then 1 per 12s
 
   const cookie = (value, maxAgeS) => [
@@ -107,17 +272,20 @@ export function createAuth({ config, logger }) {
 
   const PUBLIC = new Set(['/health', '/ready', '/auth/login', '/auth/me', '/auth/logout']);
 
-  function requireAuth(req, res, next) {
+  // Session stores may be async (PostgreSQL); Express 4 doesn't catch rejections, so forward them.
+  const safe = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+
+  const requireAuth = safe(async (req, res, next) => {
     if (PUBLIC.has(req.path)) return next();
-    const session = sessions.get(readCookie(req, COOKIE));
+    const session = await sessions.get(readCookie(req, COOKIE));
     if (!session) return res.status(401).json({ error: 'unauthorized' });
     req.user = { email: session.email };
     return next();
-  }
+  });
 
   const router = express.Router();
 
-  router.post('/auth/login', express.json({ limit: '2kb' }), async (req, res) => {
+  router.post('/auth/login', express.json({ limit: '2kb' }), safe(async (req, res) => {
     const ip = req.ip || 'unknown';
     const gate = attempts.take(ip);
     if (!gate.ok) {
@@ -139,26 +307,26 @@ export function createAuth({ config, logger }) {
       await new Promise((r) => setTimeout(r, 300 + Math.random() * 200));
       return res.status(401).json({ error: 'Invalid email or password.' });
     }
-    const id = sessions.create(who);
+    const id = await sessions.create(who);
     res.set('set-cookie', cookie(id, Math.floor(sessionTtlMs / 1000)));
     res.set('cache-control', 'no-store');
     logger.info('login ok', { ip, email: who });
     return res.json({ email: who });
-  });
+  }));
 
-  router.get('/auth/me', (req, res) => {
-    const s = sessions.get(readCookie(req, COOKIE));
+  router.get('/auth/me', safe(async (req, res) => {
+    const s = await sessions.get(readCookie(req, COOKIE));
     res.set('cache-control', 'no-store');
     // "Not signed in" is a normal answer here, not an error: 200 either way.
     if (!s) return res.json({ authenticated: false, emailDomain });
     return res.json({ authenticated: true, email: s.email, expiresAt: s.expiresAt });
-  });
+  }));
 
-  router.post('/auth/logout', (req, res) => {
-    sessions.destroy(readCookie(req, COOKIE));
+  router.post('/auth/logout', safe(async (req, res) => {
+    await sessions.destroy(readCookie(req, COOKIE));
     res.set('set-cookie', cookie('', 0));
     res.json({ ok: true });
-  });
+  }));
 
   return { router, requireAuth, sameOrigin, sessions, attempts };
 }

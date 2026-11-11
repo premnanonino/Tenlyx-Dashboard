@@ -10,17 +10,18 @@
 /* The hero (and its floating nav) is always dark, whatever the page theme:
    scope dark tokens so every control placed on it adapts. */
 .on-dark {
-  --paper: #0c0c0b;
-  --paper-2: rgba(239, 235, 226, 0.07);
-  --paper-3: rgba(239, 235, 226, 0.14);
-  --ink: #efebe2;
-  --ink-2: #d4cec1;
-  --muted: #a8a295;
-  --rule: rgba(239, 235, 226, 0.16);
-  --rule-strong: rgba(239, 235, 226, 0.4);
-  --accent: #ea5534;
-  --ok: #5fc286;
-  --tip-bg: #efebe2; --tip-fg: #151515; --tip-muted: #5a5650; --tip-rule: #cbc4b4;
+  --paper: #09171b;
+  --paper-2: rgba(236, 246, 249, 0.07);
+  --paper-3: rgba(236, 246, 249, 0.14);
+  --ink: #ecf6f9;
+  --ink-2: #b3dae6;
+  --muted: #8cc8d9;
+  --rule: rgba(236, 246, 249, 0.16);
+  --rule-strong: rgba(236, 246, 249, 0.4);
+  --accent: #fab038;
+  --on-accent: #09171b;
+  --ok: #8fcc66;
+  --tip-bg: #ecf6f9; --tip-fg: #09171b; --tip-muted: #266273; --tip-rule: #b3dae6;
   color-scheme: dark;
   color: var(--ink);
 }
@@ -33,7 +34,7 @@
   min-height: clamp(320px, 30vw, 430px);
   border-radius: 18px;
   overflow: hidden;
-  background: #0c0c0b;
+  background: #09171b;
   color: var(--ink);
   box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04), 0 18px 40px -24px rgba(0, 0, 0, 0.55);
   animation: hero-in 0.7s var(--ease-out) both;
@@ -47,7 +48,7 @@
   position: absolute;
   inset: -2%;
   z-index: -2;
-  background: #0c0c0b url('/hero-datacenter.jpg') no-repeat;
+  background: #09171b url('/hero-datacenter.jpg') no-repeat;
   background-size: cover;
   background-position: 50% 45%;
   transform-origin: 75% 50%;
@@ -57,6 +58,7 @@
 /* Each section frames the image differently; switching tabs pans the shot. */
 .hero--ai .hero__img { background-position: 72% 20%; }
 .hero--reports .hero__img { background-position: 92% 75%; }
+.hero--calls .hero__img { background-position: 30% 60%; }
 @keyframes hero-zoom { from { transform: scale(1.12); filter: brightness(0.6); } to { transform: scale(1.02); filter: none; } }
 @keyframes hero-drift { from { transform: scale(1.02) translate3d(0, 0, 0); } to { transform: scale(1.07) translate3d(-1.2%, -1%, 0); } }
 
@@ -66,8 +68,8 @@
   inset: 0;
   z-index: -1;
   background:
-    linear-gradient(180deg, rgba(10, 10, 9, 0.7) 0%, rgba(10, 10, 9, 0) 34%, rgba(10, 10, 9, 0) 55%, rgba(10, 10, 9, 0.9) 100%),
-    linear-gradient(90deg, rgba(10, 10, 9, 0.95) 0%, rgba(10, 10, 9, 0.82) 30%, rgba(10, 10, 9, 0.32) 66%, rgba(10, 10, 9, 0.5) 100%);
+    linear-gradient(180deg, rgba(9, 23, 27, 0.7) 0%, rgba(9, 23, 27, 0) 34%, rgba(9, 23, 27, 0) 55%, rgba(9, 23, 27, 0.9) 100%),
+    linear-gradient(90deg, rgba(9, 23, 27, 0.95) 0%, rgba(9, 23, 27, 0.82) 30%, rgba(9, 23, 27, 0.32) 66%, rgba(9, 23, 27, 0.5) 100%);
 }
 
 /* ---- layer 3: floating nav ---------------------------------------------- */
@@ -78,7 +80,7 @@
   top: auto;
   border: 1px solid var(--rule);
   border-radius: 12px;
-  background: rgba(14, 14, 13, 0.55);
+  background: rgba(9, 23, 27, 0.55);
   -webkit-backdrop-filter: blur(14px) saturate(1.2);
   backdrop-filter: blur(14px) saturate(1.2);
   animation: nav-float-in 0.6s var(--ease-out) both 0.15s;
@@ -87,7 +89,7 @@
 .nav--float .nav__row { min-height: 54px; padding: 0 14px 0 18px; }
 .nav--float .nav__links a { color: var(--muted); }
 .nav--float .nav__links a.is-active, .nav--float .nav__links a:hover { color: var(--ink); }
-.nav--float .nav__n { color: rgba(239, 235, 226, 0.35); }
+.nav--float .nav__n { color: rgba(236, 246, 249, 0.35); }
 .nav--float .nav__bar { bottom: 0; height: 3px; border-radius: 2px 2px 0 0; }
 .nav--float .btn { border-radius: 8px; }
 .nav--float .theme-toggle, .nav--float .chip { border-radius: 6px; }
@@ -101,7 +103,7 @@
   left: 24px;
   right: 24px;
   z-index: 40;
-  background: rgba(12, 12, 11, 0.86);
+  background: rgba(9, 23, 27, 0.86);
   box-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.6);
   animation: nav-pin 0.35s var(--ease-out) both;
 }
@@ -130,6 +132,9 @@
   gap: 18px;
   flex-wrap: wrap;
   padding: 10px 32px 26px;
+  /* Above the ticker strip that follows it, so the range popover isn't covered. */
+  position: relative;
+  z-index: 5;
   animation: page-in 0.55s var(--ease-out) both 0.3s;
 }
 .hero__title h1 {
@@ -143,10 +148,10 @@
 }
 .hero__title p { margin: 12px 0 0; font-size: 12px; color: var(--ink-2); }
 .hero__title .title-sub { margin-top: 12px !important; }
-.hero__title .tabs { background: rgba(14, 14, 13, 0.5); border-radius: 8px; overflow: hidden; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
+.hero__title .tabs { background: rgba(9, 23, 27, 0.5); border-radius: 8px; overflow: hidden; -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
 .hero__title .btn { border-radius: 8px; }
 .hero__title .range__pop { border-radius: 10px; box-shadow: 0 18px 40px -12px rgba(0, 0, 0, 0.7); }
-.hero__title .alert-link { color: #ff8a7a; }
+.hero__title .alert-link { color: #fcd79c; }
 
 /* Photo credit (required by the image's CC BY-SA licence). */
 .hero__credit {
@@ -154,7 +159,7 @@
   top: 100px;
   right: 30px;
   font-size: 10px;
-  color: rgba(239, 235, 226, 0.55);
+  color: rgba(236, 246, 249, 0.55);
   text-decoration: none;
   animation: page-in 0.5s var(--ease-out) both 0.5s;
 }
@@ -164,7 +169,7 @@
 .hero .ticker {
   border-bottom: 0;
   border-top: 1px solid var(--rule);
-  background: rgba(10, 10, 9, 0.62);
+  background: rgba(9, 23, 27, 0.62);
   color: var(--ink);
   -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px);

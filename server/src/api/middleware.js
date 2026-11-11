@@ -1,3 +1,4 @@
+import zlib from 'node:zlib';
 import { randomUUID } from 'node:crypto';
 
 export function requestContext(logger) {
@@ -18,6 +19,8 @@ const CSP = [
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com",
   "img-src 'self' data: blob:",
+  // Call recordings (Call History page) are streamed from CourseRev's CDNs.
+  "media-src 'self' https://cdn.v2.courserev.ai https://cdn.courserev.ai https://*.r2.cloudflarestorage.com",
   "connect-src 'self'",
   "object-src 'none'",
   "base-uri 'self'",
@@ -40,6 +43,27 @@ export function securityHeaders({ hsts = false } = {}) {
     // Billing data must not be kept by browser or proxy caches.
     if (req.path.startsWith('/api')) res.set('cache-control', 'no-store');
     next();
+  };
+}
+
+/**
+ * Gzip JSON responses of 1 KB or more when the client accepts it (all
+ * browsers do). No dependency: Node's zlib. JSON compresses ~5-10x, so a
+ * 25 KB filter list becomes ~3 KB. Streams (SSE) are untouched: they don't
+ * use res.json().
+ */
+export function compressJson({ threshold = 1024, level = 6 } = {}) {
+  return (req, res, next) => {
+    if (!/\bgzip\b/.test(req.headers['accept-encoding'] || '')) return next();
+    const json = res.json.bind(res);
+    res.json = (body) => {
+      const str = JSON.stringify(body);
+      if (str === undefined || str.length < threshold) return json(body);
+      res.vary('Accept-Encoding');
+      res.set({ 'content-type': 'application/json; charset=utf-8', 'content-encoding': 'gzip' });
+      return res.send(zlib.gzipSync(str, { level }));
+    };
+    return next();
   };
 }
 

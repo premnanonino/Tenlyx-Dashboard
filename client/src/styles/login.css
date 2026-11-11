@@ -15,10 +15,10 @@
   gap: 28px;
   padding: 28px 40px 36px;
   overflow: hidden;
-  background: #0c0c0b;
-  color: #efebe2;
+  background: #09171b;
+  color: #ecf6f9;
 }
-.login__side-top { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #8c867a; }
+.login__side-top { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #8cc8d9; }
 .login__side-top .mark { text-decoration: none; }
 .login__big {
   align-self: center;
@@ -31,23 +31,23 @@
 }
 .login__big span { display: block; animation: big-in 0.9s var(--ease-out) both; }
 .login__big span:nth-child(2) { animation-delay: 0.08s; }
-.login__big em { font-style: normal; color: #e0482a; }
+.login__big em { font-style: normal; color: #fab038; }
 @keyframes big-in { from { clip-path: inset(0 0 100% 0); transform: translateY(30%); } to { clip-path: inset(0); transform: none; } }
 
-.login__log { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; font-size: 12px; color: #a8a295; }
+.login__log { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; font-size: 12px; color: #8cc8d9; }
 .login__log li { animation: log-in 0.3s steps(4) both; }
 .login__log li:nth-child(2) { animation-delay: 0.15s; }
 .login__log li:nth-child(3) { animation-delay: 0.3s; }
 .login__log li:nth-child(4) { animation-delay: 0.45s; }
-.login__log b { display: inline-block; width: 30px; color: #e0482a; font-weight: 500; }
+.login__log b { display: inline-block; width: 30px; color: #fab038; font-weight: 500; }
 @keyframes log-in { from { opacity: 0; transform: translateX(-6px); } }
 
 /* Signal grid: squares that switch on/off in hard steps. */
 .login__grid { display: grid; grid-template-columns: repeat(24, 1fr); gap: 3px; }
-.login__grid i { aspect-ratio: 1; background: #1f1e1b; animation: sig 2.4s steps(1) infinite; }
+.login__grid i { aspect-ratio: 1; background: #0f262c; animation: sig 2.4s steps(1) infinite; }
 .login__grid i:nth-child(7n) { animation-duration: 3.1s; }
 .login__grid i:nth-child(5n) { animation-duration: 1.7s; }
-@keyframes sig { 0%, 70% { background: #1f1e1b; } 72%, 86% { background: #e0482a; } 88%, 100% { background: #3a3833; } }
+@keyframes sig { 0%, 70% { background: #0f262c; } 72%, 86% { background: #fab038; } 88%, 100% { background: #19414d; } }
 
 /* ---- form side --------------------------------------------------------- */
 .login__main { display: grid; grid-template-rows: auto 1fr; padding: 22px 40px 40px; }
@@ -97,7 +97,7 @@
   padding: 16px 18px;
   border: 0;
   background: var(--accent);
-  color: #0c0c0b;
+  color: var(--on-accent);
   font-size: 20px;
   font-weight: 700;
   text-transform: uppercase;

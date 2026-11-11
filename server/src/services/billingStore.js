@@ -148,7 +148,7 @@ export class BillingStore {
    *  - "scan" : walk the time slice backwards (newest first) and filter.
    * Whichever touches fewer rows wins.
    */
-  query({ from, to, q, product, country, direction, limit = 100, before }) {
+  query({ from, to, q, product, country, direction, limit = 100, before, offset = 0 }) {
     const upper = before ? Math.min(to, before) : to;
     const { lo, hi } = this.sliceBounds(from, upper);
     const sliceSize = hi - lo;
@@ -187,15 +187,15 @@ export class BillingStore {
       hits.sort((a, b) => b.ts - a.ts);
       total = hits.length;
       for (const r of hits) sumCost += r.cost;
-      rows.push(...hits.slice(0, limit));
+      rows.push(...hits.slice(offset, offset + limit));
     } else {
       plan = 'scan';
       for (let i = hi - 1; i >= lo; i--) {
         const r = this.records[i];
         if (!match(r)) continue;
+        if (total >= offset && rows.length < limit) rows.push(r);
         total++;
         sumCost += r.cost;
-        if (rows.length < limit) rows.push(r);
       }
     }
 
@@ -205,6 +205,7 @@ export class BillingStore {
       total,
       sumCost,
       rows: rows.map((r) => this.present(r)),
+      offset,
       nextBefore: rows.length === limit ? rows[rows.length - 1].ts : null,
     };
   }
@@ -246,8 +247,9 @@ export class BillingStore {
     let grand = 0;
     for (let i = lo; i < hi; i++) {
       const r = this.records[i];
-      // Number rental and web-chat AI have no phone number; keep them out of the "numbers" list.
-      if (by === 'destination' && (r.product === 'numbers' || r.ai?.channel === 'chat')) continue;
+      // Number rental and AI conversations carry no phone number; keep them out of the
+      // "numbers" list (same rule as the monthly report's top numbers).
+      if (by === 'destination' && (r.product === 'numbers' || r.ai?.channel === 'chat' || !r.destination)) continue;
       const key = keyFn(r);
       let a = agg.get(key);
       if (!a) { a = { key, cost: 0, count: 0, units: 0 }; agg.set(key, a); }

@@ -120,7 +120,7 @@
 /* ---- print: the statement only, on white paper ------------------------ */
 @media print {
   @page { margin: 14mm; }
-  body, .dash, .reports, .reports__main { background: #fff !important; }
+  body, .dash, .reports, .reports__main { background: #fef5e6 !important; }
   .nav, .top-progress, .ticker, .dash-foot, .no-print, .doc-actions, .reports__aside { display: none !important; }
   .reports { display: block; border: 0; }
   .reports__main { padding: 0; }

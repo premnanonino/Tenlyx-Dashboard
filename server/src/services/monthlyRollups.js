@@ -47,7 +47,7 @@ export function addAi(agg, r) {
   if (a.outcome) { agg.outcomeN++; if (agg[a.outcome] !== undefined) agg[a.outcome]++; }
 }
 
-class MonthAgg {
+export class MonthAgg {
   constructor(key, json) {
     this.key = key;
     Object.assign(this, {
@@ -80,6 +80,11 @@ class MonthAgg {
       addAi(as, r);
       as.models[r.ai.model] = (as.models[r.ai.model] || 0) + 1;
     }
+  }
+
+  noteBalance(b) {
+    if (this.balanceOpen === null) this.balanceOpen = b.balance;
+    this.balanceClose = b.balance;
   }
 
   toJSON() {

@@ -33,6 +33,7 @@ const SECTIONS = {
   overview: { n: '01', label: 'Billing overview' },
   ai: { n: '02', label: 'Conversational AI' },
   reports: { n: '03', label: 'Monthly statements' },
+  calls: { n: '04', label: 'Call history', src: 'courserev · conversations' },
 };
 const UNKNOWN_SECTION = { n: '404', label: 'Not found' };
 
@@ -53,6 +54,7 @@ const LINKS = [
   { to: '/dashboard', end: true, n: '01', label: 'Overview' },
   { to: '/dashboard/ai', n: '02', label: 'Conversational AI' },
   { to: '/dashboard/reports', n: '03', label: 'Reports' },
+  { to: '/dashboard/calls', n: '04', label: 'Call history' },
 ];
 
 /** Nav links with a solid indicator that slides to the active tab. */
@@ -226,7 +228,7 @@ function Shell({ user, location }) {
             <div className="hero__nav-spacer" aria-hidden />
             <p className="hero__kicker mono" key={section}>
               <span>{sec.n}</span> {sec.label}
-              <i aria-hidden /> api.telnyx.com/v2
+              <i aria-hidden /> {sec.src || 'api.telnyx.com/v2'}
             </p>
             <div className="hero__slot" ref={setSlot} />
             <a className="hero__credit mono" href="https://commons.wikimedia.org/wiki/File:Wikimedia_Foundation_Servers-8055_13.jpg"

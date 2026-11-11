@@ -115,10 +115,10 @@
 
 /* ---- combobox, nav additions ------------------------------------------ */
 .suggest li { display: flex; justify-content: space-between; padding: 7px 12px; cursor: pointer; }
-.suggest li:hover, .suggest li.is-on { background: var(--accent); color: #fff; }
+.suggest li:hover, .suggest li.is-on { background: var(--accent); color: var(--on-accent); }
 .ledger__export { text-decoration: none; }
 .nav__out { gap: 8px; min-width: 0; }
-.nav__who { display: inline-grid; place-items: center; width: 18px; height: 18px; background: var(--accent); color: #fff; font-size: 10px; }
+.nav__who { display: inline-grid; place-items: center; width: 18px; height: 18px; background: var(--accent); color: var(--on-accent); font-size: 10px; }
 #main:focus { outline: none; }
 
 @media (max-width: 760px) {

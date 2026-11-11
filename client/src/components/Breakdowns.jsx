@@ -70,7 +70,7 @@ export function TopList({ data, currency }) {
           ))}
         </tbody>
       </table>
-      <p className="foot-note mono">top {data.items.length} of {num(data.distinct)} · {pct(data.items.reduce((s, x) => s + x.share, 0))} of spend</p>
+      <p className="foot-note mono">top {data.items.length} of {num(data.distinct)} · {pct(data.items.reduce((s, x) => s + x.share, 0))} of {data.by === 'destination' ? 'per-number spend' : 'spend'}</p>
     </>
   );
 }

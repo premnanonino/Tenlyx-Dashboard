@@ -2,6 +2,7 @@ import express from 'express';
 import { cached, rateLimit } from './middleware.js';
 import { parseWindow } from '../services/analytics.js';
 import { csvCell } from '../core/csv.js';
+import { LRUCache } from '../dsa/LRUCache.js';
 
 const clampInt = (v, lo, hi, d) => {
   const n = Number.parseInt(v, 10);
@@ -97,6 +98,7 @@ export function buildRouter(ctx) {
       to: w.to,
       ...recordFilters(req),
       limit: clampInt(req.query.limit, 1, 500, 100),
+      offset: clampInt(req.query.offset, 0, 10_000_000, 0),
       before,
     });
     return { ...result, tookMs: +(performance.now() - t0).toFixed(2) };
@@ -110,6 +112,71 @@ export function buildRouter(ctx) {
   r.get('/ai/overview', memo((req) => aiAnalytics.overview(parseWindow(req.query))));
 
   // ---- monthly reports (from durable rollups, not the 35-day log) ------
+  // ---- call history (CourseRev conversations) ---------------------------
+  // List, filters and search are served from memory (synced copy); only one
+  // call's heavy detail is read from CourseRev, cached and de-duplicated.
+  const calls = ctx.calls;
+  const callDetails = new LRUCache({ capacity: 50, ttlMs: 10 * 60_000 }); // heavy rows: small, separate cache
+  const CALL_RANGES = { '24h': 86_400_000, '7d': 7 * 86_400_000, '30d': 30 * 86_400_000, '90d': 90 * 86_400_000 };
+  const optInt = (v) => (v === undefined || v === '' ? null : Number.isSafeInteger(Number(v)) ? Number(v) : (() => { throw badRequest('invalid id'); })());
+  const parseCallsQuery = (q, now = Date.now()) => {
+    let from = null; let to = null;
+    if (q.from || q.to) {
+      const day = (v, name) => { const t = Date.parse(String(v)); if (!Number.isFinite(t)) throw badRequest(`${name} must be YYYY-MM-DD`); return t; };
+      from = q.from ? day(q.from, 'from') : null;
+      to = q.to ? day(q.to, 'to') + 86_400_000 : null; // inclusive end day
+    } else {
+      const span = CALL_RANGES[q.range || '7d'];
+      if (!span) throw badRequest(`range must be one of ${Object.keys(CALL_RANGES).join(', ')}`);
+      from = now - span;
+    }
+    return {
+      from, to,
+      q: String(q.q || '').slice(0, 64),
+      courseId: optInt(q.courseId),
+      orgId: optInt(q.orgId),
+      outcome: q.outcome ? String(q.outcome).slice(0, 80) : null,
+      booked: q.booked === 'yes' ? true : q.booked === 'no' ? false : null,
+      level: q.level ? String(q.level).slice(0, 32) : null,
+      page: clampInt(q.page, 1, 100_000, 1),
+      limit: clampInt(q.limit, 10, 100, 25),
+    };
+  };
+
+  r.get('/calls/meta', (req, res) => {
+    if (!calls) return res.json({ enabled: false });
+    res.json({ enabled: true, hydrated: calls.store.hydrated, ...calls.store.facets(), sync: calls.syncInfo() });
+  });
+
+  r.get('/calls', (req, res, next) => {
+    if (!calls) return res.json({ enabled: false, total: 0, rows: [] });
+    try {
+      const key = `calls?${new URLSearchParams(req.query)}|cv${calls.store.version}`;
+      const hit = cache.get(key);
+      if (hit !== undefined) { res.set('x-cache', 'HIT'); return res.json(hit); }
+      const value = { enabled: true, hydrated: calls.store.hydrated, ...calls.store.query(parseCallsQuery(req.query)) };
+      cache.set(key, value);
+      res.set('x-cache', 'MISS');
+      return res.json(value);
+    } catch (err) { return next(err); }
+  });
+
+  r.get('/calls/:callId', rateLimit(limiter, 2), async (req, res, next) => {
+    if (!calls) return res.status(404).json({ error: 'not_found' });
+    const callId = String(req.params.callId).slice(0, 128);
+    const call = calls.store.get(callId);
+    if (!call) return res.status(404).json({ error: 'not_found' });
+    try {
+      const key = `calldetail:${callId}|${call.updatedAt}`;
+      let detail = callDetails.get(key);
+      if (detail === undefined) {
+        detail = await flight.do(key, () => calls.source.detail(callId));
+        callDetails.set(key, detail);
+      }
+      return res.json({ call, detail });
+    } catch (err) { return next(err); }
+  });
+
   r.get('/reports', (req, res) => res.json(reports.list()));
   r.get('/reports/summary.csv', (req, res) => {
     res.type('text/csv').attachment('tlxmon-monthly-summary.csv').send(reports.summaryCsv());
@@ -128,21 +195,28 @@ export function buildRouter(ctx) {
 
   // ---- operations -------------------------------------------------------
   // Manual refresh is expensive upstream: charge 10 tokens.
-  // Manual refresh runs in the background (it may have to wait out a
-  // Telnyx rate limit); progress arrives over the live stream.
-  r.post('/sync', rateLimit(limiter, 10), (req, res) => {
-    const throttledForMs = ctx.provider.pacer?.coolingDownMs?.() ?? 0;
-    Promise.all([sync.syncRecords(), sync.syncBalance()])
-      .then(() => alerts.evaluate())
-      .catch((err) => ctx.logger?.warn('manual sync failed', { err: err.message }));
-    res.status(202).json({ ok: true, queued: true, throttledForMs });
+  // Manual refresh never blocks on Telnyx: the standalone role runs it in
+  // the background, the api role queues it for the worker (with a cooldown).
+  r.post('/sync', rateLimit(limiter, 10), async (req, res, next) => {
+    try {
+      const r2 = await ctx.triggerSync(req.user?.email);
+      res.status(202).json({ ok: true, queued: !!r2.queued, throttledForMs: r2.throttledForMs ?? r2.retryInMs ?? 0 });
+    } catch (err) { next(err); }
   });
 
-  r.get('/sync/status', (req, res) => res.json(sync.progress()));
+  r.get('/sync/status', async (req, res, next) => {
+    try { res.json(ctx.syncStatus ? await ctx.syncStatus() : sync.progress()); } catch (err) { next(err); }
+  });
 
-  r.get('/system', (req, res) => {
+  r.get('/system', async (req, res, next) => {
+    let sessions = 0;
+    let worker = null;
+    try {
+      sessions = await ctx.auth.sessions.count();
+      worker = ctx.workerStatus ? await ctx.workerStatus() : null;
+    } catch (err) { return next(err); }
     const mem = process.memoryUsage();
-    res.json({
+    return res.json({
       mode: config.mode,
       provider: ctx.provider.kind,
       startedAt,
@@ -165,7 +239,8 @@ export function buildRouter(ctx) {
       sse: sse.stats(),
       bus: bus.stats(),
       sync: sync.stats(),
-      auth: { sessions: ctx.auth.sessions.sessions.size, loginRejected: ctx.auth.attempts.rejected },
+      auth: { sessions, loginRejected: ctx.auth.attempts.rejected },
+      worker,
       rollups: { months: rollups.months.size, highWater: rollups.meta.highWater, backfill: rollups.backfill, aiRecords: store.aiRecords.length },
     });
   });

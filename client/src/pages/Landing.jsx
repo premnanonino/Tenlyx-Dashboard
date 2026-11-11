@@ -16,6 +16,7 @@ function Coord({ value, pos, neg }) {
 
 export default function Landing() {
   const canvasRef = useRef(null);
+  const copyRef = useRef(null);
   const sceneRef = useRef(null);
   const navigate = useNavigate();
   const now = useNow(1000);
@@ -35,6 +36,7 @@ export default function Landing() {
         if (msg) setLines((l) => [...l, msg].slice(-9));
       },
       onPointer: (c) => setCoords(c),
+      avoid: () => copyRef.current,
     });
     sceneRef.current = scene;
     scene.init()
@@ -75,7 +77,7 @@ export default function Landing() {
         </nav>
       </header>
 
-      <section className="lp-copy">
+      <section className="lp-copy" ref={copyRef}>
         <p className="lp-kicker"><span className="lp-index">01</span> Account monitor</p>
         <h1 className="lp-title">
           <span className="line"><span>Billing</span></span>
@@ -129,7 +131,6 @@ export default function Landing() {
         <div className="lp-fallback mono">3D view unavailable on this device. The dashboard still works.</div>
       )}
 
-      <div className="wipe" aria-hidden />
       {!booted && <BootLoader progress={progress} lines={lines} onDone={finishBoot} />}
     </main>
   );

@@ -5,9 +5,7 @@
 .dash {
   min-height: 100%;
   background: var(--paper);
-  animation: dash-in 0.5s ease both;
 }
-@keyframes dash-in { from { opacity: 0.4; } }
 
 /* ---- top progress loader ---------------------------------------------- */
 .top-progress {
@@ -407,7 +405,15 @@
 @keyframes row-new { 0%, 30% { background: var(--accent-tint); } 100% { background: transparent; } }
 .row--failed td { color: var(--muted); }
 .tag { padding: 1px 5px; border: 1px solid var(--crit); color: var(--crit); font-size: 10.5px; }
-.ledger__more { margin-top: 14px; }
+.pager { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 14px; font-size: 12px; }
+.pager__info { color: var(--muted); }
+.pager__btns { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.pager__btns button { min-width: 32px; padding: 5px 9px; border: 1px solid var(--rule); background: transparent; color: var(--ink); font: inherit; cursor: pointer; }
+.pager__btns button:hover:not(:disabled) { border-color: var(--ink); }
+.pager__btns button.is-on { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.pager__btns button:disabled { opacity: 0.4; cursor: default; }
+.pager__btns button.is-on:disabled { opacity: 1; }
+.pager__gap { padding: 0 4px; color: var(--muted); }
 
 /* ---- backend internals ------------------------------------------------- */
 .sys-grid {

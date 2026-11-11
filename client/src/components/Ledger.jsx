@@ -1,9 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.js';
-import { useDebounced, useInView } from '../lib/hooks.js';
+import { useDebounced } from '../lib/hooks.js';
 import { money, moneySmart, num, productColor, productLabel, shortModel, utcDate, utcTime } from '../lib/format.js';
 import { SkeletonRows, Tabs } from './ui.jsx';
 import { rangeLabel, rangeQuery } from './RangePicker.jsx';
+
+const PAGE_SIZE = 10;
+
+/** Page numbers to show: first, last, and a window around the current page, with gaps as null. */
+function pageList(cur, count) {
+  const set = new Set([1, count, cur - 1, cur, cur + 1].filter((p) => p >= 1 && p <= count));
+  const out = [];
+  let prev = 0;
+  for (const p of [...set].sort((a, b) => a - b)) {
+    if (p - prev > 1) out.push(null);
+    out.push(p);
+    prev = p;
+  }
+  return out;
+}
 
 const PRODUCTS = [
   { value: '', label: 'All' },
@@ -24,9 +39,11 @@ export default function Ledger({ tick, currency, range }) {
   const [q, setQ] = useState('');
   const [product, setProduct] = useState('');
   const [result, setResult] = useState(null);
-  const [extra, setExtra] = useState([]);
+  const [page, setPage] = useState(1);
+  // Newest timestamp seen on page 1, +1. Pages 2+ are read below this cursor
+  // so new live records don't shift rows between pages while you browse.
+  const [anchor, setAnchor] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [more, setMore] = useState(false);
   const [error, setError] = useState(null);
   const [suggest, setSuggest] = useState([]);
   const [focus, setFocus] = useState(false);
@@ -42,24 +59,26 @@ export default function Ledger({ tick, currency, range }) {
     if (product) p.set('product', product);
     return p;
   };
-  const params = (before) => {
-    const p = new URLSearchParams(`${rq}&limit=40`);
-    if (dq.trim()) p.set('q', dq.trim());
-    if (product) p.set('product', product);
-    if (before) p.set('before', String(before));
+  const params = () => {
+    const p = filterParams();
+    p.set('limit', String(PAGE_SIZE));
+    if (page > 1) {
+      p.set('offset', String((page - 1) * PAGE_SIZE));
+      if (anchor) p.set('before', String(anchor));
+    }
     return p.toString();
   };
 
-  // Filters changed: reset paging and the "seen" set (no flash on filter change).
-  useEffect(() => { setExtra([]); seen.current = null; }, [dq, product, rq]);
+  // Filters changed: back to page 1 and reset the "seen" set (no flash on filter change).
+  useEffect(() => { setPage(1); setAnchor(null); seen.current = null; }, [dq, product, rq]);
 
   useEffect(() => {
-    if (extra.length) return undefined; // user is paging through history: hold still
     const c = new AbortController();
     setLoading(true);
     api(`/records?${params()}`, { signal: c.signal })
       .then((r) => {
-        if (seen.current) {
+        if (page === 1 && r.rows[0]) setAnchor(r.rows[0].ts + 1);
+        if (page === 1 && seen.current) {
           const next = new Set(r.rows.filter((x) => !seen.current.has(x.id)).map((x) => x.id));
           setFresh(next);
         }
@@ -70,7 +89,7 @@ export default function Ledger({ tick, currency, range }) {
       .finally(() => { if (!c.signal.aborted) setLoading(false); });
     return () => c.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dq, product, rq, tick, extra.length]);
+  }, [dq, product, rq, page, page === 1 ? tick : 0]); // live refresh only on page 1
 
   useEffect(() => {
     setOpt(-1);
@@ -81,27 +100,9 @@ export default function Ledger({ tick, currency, range }) {
     return () => c.abort();
   }, [q]);
 
-  const loadMore = async () => {
-    const last = extra.length ? extra[extra.length - 1] : result;
-    if (!last?.nextBefore) return;
-    setMore(true);
-    try {
-      const r = await api(`/records?${params(last.nextBefore)}`);
-      setExtra((x) => [...x, r]);
-    } catch (e) {
-      setError(e); // stops infinite scroll until the next refresh
-    } finally { setMore(false); }
-  };
-
-  const rows = result ? [...result.rows, ...extra.flatMap((x) => x.rows)] : [];
-  const tail = extra.length ? extra[extra.length - 1] : result;
-
-  // Infinite scroll: fetch the next page when the end of the table nears the viewport.
-  const [endRef, , endVisible] = useInView('400px');
-  useEffect(() => {
-    if (endVisible && tail?.nextBefore && !more && !error) loadMore();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [endVisible, tail?.nextBefore, more]);
+  const rows = result?.rows ?? [];
+  const pages = result ? Math.max(1, Math.ceil(result.total / PAGE_SIZE)) : 1;
+  const go = (p) => { if (p >= 1 && p <= pages && p !== page) setPage(p); };
 
   return (
     <div className="ledger">
@@ -157,14 +158,14 @@ export default function Ledger({ tick, currency, range }) {
           <b>{num(result.total)}</b> records · <b>{money(result.sumCost, currency)}</b> · {rangeLabel(range)}
           <span className="sep" />plan <b className={`plan plan--${result.plan}`}>{result.plan}</b>
           · scanned {num(result.scanned)} · {result.tookMs} ms
-          {extra.length > 0 && <span className="paused"> · live updates paused while paging</span>}
+          {page > 1 && <span className="paused"> · live updates paused while paging</span>}
         </p>
       )}
 
       {error && <p className="panel__error mono" role="alert">Couldn't load records. Try again in a moment.</p>}
 
       {!result ? (
-        <SkeletonRows rows={10} h={20} />
+        <SkeletonRows rows={PAGE_SIZE} h={20} />
       ) : rows.length === 0 ? (
         <p className="empty mono">No records match.</p>
       ) : (
@@ -195,11 +196,24 @@ export default function Ledger({ tick, currency, range }) {
         </div>
       )}
 
-      <div ref={endRef} aria-hidden />
-      {tail?.nextBefore && (
-        <button type="button" className="btn btn--ghost ledger__more" onClick={loadMore} disabled={more}>
-          {more ? <><span className="spin-square" /> Loading older records</> : `Load older · ${num(result.total - rows.length)} more`}
-        </button>
+      {result && result.total > PAGE_SIZE && (
+        <nav className="pager mono" aria-label="Ledger pages">
+          <span className="pager__info">
+            {num((page - 1) * PAGE_SIZE + 1)}–{num(Math.min(page * PAGE_SIZE, result.total))} of {num(result.total)}
+          </span>
+          <div className="pager__btns">
+            <button type="button" onClick={() => go(page - 1)} disabled={page === 1 || loading} aria-label="Previous page">‹ Prev</button>
+            {pageList(page, pages).map((p, i) => (p === null
+              ? <span key={`gap-${i}`} className="pager__gap" aria-hidden>…</span>
+              : (
+                <button key={p} type="button" className={p === page ? 'is-on' : ''} aria-current={p === page ? 'page' : undefined}
+                  onClick={() => go(p)} disabled={loading && p !== page}>
+                  {num(p)}
+                </button>
+              )))}
+            <button type="button" onClick={() => go(page + 1)} disabled={page === pages || loading} aria-label="Next page">Next ›</button>
+          </div>
+        </nav>
       )}
     </div>
   );

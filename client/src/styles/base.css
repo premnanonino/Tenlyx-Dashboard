@@ -1,41 +1,47 @@
 /* ==========================================================================
    Tokens — flat colours only. No gradients anywhere in this project.
    ========================================================================== */
+/* Palette (flat, no gradients):
+   light blue    neutrals          #ecf6f9 #d9edf2 #b3dae6 … #19414d #0d2126 #09171b
+   orange        accent            #955d04 (700, text-safe on light) / #fab038 (400, on dark)
+   mustard       warn · numbers    #997500 / #cc9c00 / #ffcf33
+   forest green  ok · SIP series   #457326 / #5c9933 / #8fcc66
+   black forest  AI series         #1c7d1d / #58da5a */
 :root {
-  --night: #0c0c0b;
-  --night-2: #161614;
-  --paper: #efebe2;
-  --paper-2: #e7e2d6;
-  --paper-3: #ded8ca;
-  --ink: #151515;
-  --ink-2: #3a3833;
-  --muted: #77726a;
-  --rule: #cbc4b4;
-  --rule-strong: #151515;
-  --accent: #e0482a;
-  --accent-tint: #f4d5cb;
-  --ok: #2c7a4b;
-  --warn: #b7800f;
-  --crit: #b8302a;
+  --night: #09171b;
+  --night-2: #0d2126;
+  --paper: #ecf6f9;
+  --paper-2: #d9edf2;
+  --paper-3: #b3dae6;
+  --ink: #0d2126;
+  --ink-2: #19414d;
+  --muted: #266273;
+  --rule: #b3dae6;
+  --rule-strong: #0d2126;
+  --accent: #955d04;
+  --accent-tint: #fef5e6;
+  --on-accent: #fef5e6; /* text on accent fills */
+  --ok: #457326;
+  --warn: #997500;
+  --crit: #633e03;
 
   /* chart series — flat, per theme */
-  --p-messaging: #151515;
-  --p-voice: #e0482a;
-  --p-verify: #2f5d8a;
-  --p-numbers: #a39882;
-  --p-sip: #6e7d3a;
-  --p-ai: #7a4e8c;
-  --m-0: #151515; --m-1: #e0482a; --m-2: #2f5d8a; --m-3: #6e7d3a;
-  --m-4: #a39882; --m-5: #7a4e8c; --m-6: #3d8a86; --m-7: #8c6a2f; --m-other: #cbc4b4;
+  --p-messaging: #0d2126;
+  --p-voice: #c77d05;
+  --p-verify: #338399;
+  --p-numbers: #cc9c00;
+  --p-sip: #5c9933;
+  --p-ai: #1c7d1d;
+  --m-0: #0d2126; --m-1: #c77d05; --m-2: #338399; --m-3: #5c9933;
+  --m-4: #cc9c00; --m-5: #1c7d1d; --m-6: #66b6cc; --m-7: #457326; --m-other: #b3dae6;
   /* heatmap: 6 discrete steps of one hue (no gradients) */
-  --heat-0: #e7e2d6; --heat-1: #f2c9bb; --heat-2: #eda48c; --heat-3: #e6785a; --heat-4: #e0482a; --heat-5: #a8321c;
+  --heat-0: #d9edf2; --heat-1: #feebcd; --heat-2: #fcd79c; --heat-3: #fab038; --heat-4: #c77d05; --heat-5: #633e03;
   /* inverse surface: tooltips, ticker tape */
-  --tip-bg: #151515; --tip-fg: #efebe2; --tip-muted: #a8a295; --tip-rule: #3a3833;
+  --tip-bg: #0d2126; --tip-fg: #ecf6f9; --tip-muted: #8cc8d9; --tip-rule: #19414d;
   color-scheme: light;
-  --wipe-bg: var(--paper);
 
-  --font-sans: 'IBM Plex Sans Condensed', 'Arial Narrow', system-ui, sans-serif;
-  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --font-sans: 'Roboto', system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
+  --font-mono: 'Roboto Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in-out: cubic-bezier(0.7, 0, 0.2, 1);
@@ -43,56 +49,58 @@
 
 /* Dark theme: explicit choice, or the OS preference unless light was chosen. */
 :root[data-theme="dark"] {
-  --paper: #121211;
-  --paper-2: #1a1a18;
-  --paper-3: #272623;
-  --ink: #ece7dc;
-  --ink-2: #c4beb1;
-  --muted: #8c867a;
-  --rule: #33312c;
-  --rule-strong: #6b665c;
-  --accent: #ea5534;
-  --accent-tint: #43201a;
-  --ok: #4fae76;
-  --warn: #e0a631;
-  --crit: #ef5a4c;
-  --p-messaging: #ece7dc; --p-voice: #ea5534; --p-verify: #5d8fc4; --p-numbers: #a39882; --p-sip: #9aae52; --p-ai: #a982c0;
-  --m-0: #ece7dc; --m-1: #ea5534; --m-2: #5d8fc4; --m-3: #9aae52;
-  --m-4: #a39882; --m-5: #a982c0; --m-6: #4fb3ad; --m-7: #c9994a; --m-other: #4a4740;
-  --heat-0: #1f1e1b; --heat-1: #45231b; --heat-2: #74301f; --heat-3: #ad3d24; --heat-4: #ea5534; --heat-5: #ff8a6b;
-  --tip-bg: #ece7dc; --tip-fg: #151515; --tip-muted: #5a5650; --tip-rule: #cbc4b4;
+  --paper: #09171b;
+  --paper-2: #0d2126;
+  --paper-3: #19414d;
+  --ink: #ecf6f9;
+  --ink-2: #b3dae6;
+  --muted: #8cc8d9;
+  --rule: #19414d;
+  --rule-strong: #338399;
+  --accent: #fab038;
+  --accent-tint: #321f01;
+  --on-accent: #09171b;
+  --ok: #8fcc66;
+  --warn: #ffcf33;
+  --crit: #fbc36a;
+  --p-messaging: #ecf6f9; --p-voice: #fab038; --p-verify: #66b6cc; --p-numbers: #ffcf33; --p-sip: #8fcc66; --p-ai: #58da5a;
+  --m-0: #ecf6f9; --m-1: #fab038; --m-2: #66b6cc; --m-3: #8fcc66;
+  --m-4: #ffcf33; --m-5: #58da5a; --m-6: #b3dae6; --m-7: #abd98c; --m-other: #19414d;
+  --heat-0: #0d2126; --heat-1: #321f01; --heat-2: #633e03; --heat-3: #955d04; --heat-4: #f99c06; --heat-5: #fcd79c;
+  --tip-bg: #ecf6f9; --tip-fg: #0d2126; --tip-muted: #266273; --tip-rule: #b3dae6;
   color-scheme: dark;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-  --paper: #121211;
-  --paper-2: #1a1a18;
-  --paper-3: #272623;
-  --ink: #ece7dc;
-  --ink-2: #c4beb1;
-  --muted: #8c867a;
-  --rule: #33312c;
-  --rule-strong: #6b665c;
-  --accent: #ea5534;
-  --accent-tint: #43201a;
-  --ok: #4fae76;
-  --warn: #e0a631;
-  --crit: #ef5a4c;
-  --p-messaging: #ece7dc; --p-voice: #ea5534; --p-verify: #5d8fc4; --p-numbers: #a39882; --p-sip: #9aae52; --p-ai: #a982c0;
-  --m-0: #ece7dc; --m-1: #ea5534; --m-2: #5d8fc4; --m-3: #9aae52;
-  --m-4: #a39882; --m-5: #a982c0; --m-6: #4fb3ad; --m-7: #c9994a; --m-other: #4a4740;
-  --heat-0: #1f1e1b; --heat-1: #45231b; --heat-2: #74301f; --heat-3: #ad3d24; --heat-4: #ea5534; --heat-5: #ff8a6b;
-  --tip-bg: #ece7dc; --tip-fg: #151515; --tip-muted: #5a5650; --tip-rule: #cbc4b4;
+  --paper: #09171b;
+  --paper-2: #0d2126;
+  --paper-3: #19414d;
+  --ink: #ecf6f9;
+  --ink-2: #b3dae6;
+  --muted: #8cc8d9;
+  --rule: #19414d;
+  --rule-strong: #338399;
+  --accent: #fab038;
+  --accent-tint: #321f01;
+  --on-accent: #09171b;
+  --ok: #8fcc66;
+  --warn: #ffcf33;
+  --crit: #fbc36a;
+  --p-messaging: #ecf6f9; --p-voice: #fab038; --p-verify: #66b6cc; --p-numbers: #ffcf33; --p-sip: #8fcc66; --p-ai: #58da5a;
+  --m-0: #ecf6f9; --m-1: #fab038; --m-2: #66b6cc; --m-3: #8fcc66;
+  --m-4: #ffcf33; --m-5: #58da5a; --m-6: #b3dae6; --m-7: #abd98c; --m-other: #19414d;
+  --heat-0: #0d2126; --heat-1: #321f01; --heat-2: #633e03; --heat-3: #955d04; --heat-4: #f99c06; --heat-5: #fcd79c;
+  --tip-bg: #ecf6f9; --tip-fg: #0d2126; --tip-muted: #266273; --tip-rule: #b3dae6;
   color-scheme: dark;
   }
 }
-/* Statements always print on white, whatever the screen theme. */
+/* Statements always print on a light surface, whatever the screen theme. */
 @media print {
   :root, :root[data-theme="dark"], :root:not([data-theme="light"]) {
-  --paper: #ffffff; --paper-2: #f4f1ea; --paper-3: #e7e2d6; --ink: #151515; --ink-2: #3a3833; --muted: #77726a;
-  --rule: #cbc4b4; --rule-strong: #151515; --accent: #e0482a; --ok: #2c7a4b; --warn: #b7800f; --crit: #b8302a;
-  --p-messaging: #151515; --p-voice: #e0482a; --p-verify: #2f5d8a; --p-numbers: #a39882; --p-sip: #6e7d3a; --p-ai: #7a4e8c;
-  --m-0: #151515; --m-1: #e0482a; --m-2: #2f5d8a; --m-3: #6e7d3a; --m-4: #a39882; --m-5: #7a4e8c; --m-6: #3d8a86; --m-7: #8c6a2f;
+  --paper: #ecf6f9; --paper-2: #d9edf2; --paper-3: #b3dae6; --ink: #0d2126; --ink-2: #19414d; --muted: #266273;
+  --rule: #b3dae6; --rule-strong: #0d2126; --accent: #955d04; --on-accent: #fef5e6; --ok: #457326; --warn: #997500; --crit: #633e03;
+  --p-messaging: #0d2126; --p-voice: #c77d05; --p-verify: #338399; --p-numbers: #cc9c00; --p-sip: #5c9933; --p-ai: #1c7d1d;
+  --m-0: #0d2126; --m-1: #c77d05; --m-2: #338399; --m-3: #5c9933; --m-4: #cc9c00; --m-5: #1c7d1d; --m-6: #66b6cc; --m-7: #457326;
   color-scheme: light;
   }
 }
@@ -151,7 +159,7 @@ a { color: inherit; }
   height: 10px;
   background: var(--accent);
 }
-.mark--dark { color: #efebe2; } /* always sits on a dark surface */
+.mark--dark { color: #ecf6f9; } /* always sits on a dark surface */
 
 /* Square spinner loader — rotates in hard steps like a mechanical indicator. */
 .spin-square {
@@ -196,7 +204,7 @@ a { color: inherit; }
   z-index: 100;
   padding: 10px 14px;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-weight: 600;
   text-decoration: none;
   transition: top 0.15s;

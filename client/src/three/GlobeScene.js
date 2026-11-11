@@ -4,11 +4,11 @@ import {
 } from './shaders.js';
 
 const PALETTE = {
-  night: new THREE.Color('#0C0C0B'),
-  paper: new THREE.Color('#EFEBE2'),
-  sea: new THREE.Color('#57534A'),
-  accent: new THREE.Color('#E0482A'),
-  rule: new THREE.Color('#8C867A'),
+  night: new THREE.Color('#09171B'),
+  paper: new THREE.Color('#ECF6F9'),
+  sea: new THREE.Color('#266273'),
+  accent: new THREE.Color('#FAB038'),
+  rule: new THREE.Color('#8CC8D9'),
 };
 
 const POINT_COUNT = 64_000;
@@ -62,7 +62,9 @@ function slerp(a, b, t, out) {
 }
 
 export class GlobeScene {
-  constructor(canvas, { onProgress, onPointer } = {}) {
+  constructor(canvas, { onProgress, onPointer, avoid } = {}) {
+    /** Returns the element the globe must stay clear of (the copy column). */
+    this.avoid = avoid || (() => null);
     this.canvas = canvas;
     this.onProgress = onProgress || (() => {});
     this.onPointer = onPointer || (() => {});
@@ -77,7 +79,7 @@ export class GlobeScene {
     this.hovering = false;
     this.introStart = 0;
     this.dive = null;
-    this.layout = { x: 1.0, y: 0, z: 4.6 };
+    this.layout = { x: 0, y: 0, z: 4.6 };
     this.listeners = [];
   }
 
@@ -397,6 +399,8 @@ export class GlobeScene {
   #bindEvents() {
     this.ro = new ResizeObserver(() => this.#resize());
     this.ro.observe(this.canvas);
+    const avoidEl = this.avoid();
+    if (avoidEl) this.ro.observe(avoidEl);
 
     this.#on(window, 'pointermove', (e) => {
       const rect = this.canvas.getBoundingClientRect();
@@ -425,10 +429,38 @@ export class GlobeScene {
     const h = this.canvas.clientHeight || window.innerHeight;
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
-    const narrow = w / h < 0.9;
-    this.layout = narrow ? { x: 0, y: -1.05, z: 6.2 } : { x: w < 1100 ? 0.75 : 1.0, y: 0, z: 4.6 };
+    this.layout = this.#fitLayout(w, h);
+    // Lens shift: the globe stays on the camera axis (no skew) and the whole
+    // image slides so its centre lands in the free area beside the copy.
+    const { sx, sy } = this.layout;
+    this.camera.setViewOffset(w, h, -sx * w / 2, sy * h / 2, w, h);
     this.camera.updateProjectionMatrix();
     this.#sizePoints();
+  }
+
+  /**
+   * Place the globe in the largest box that does not overlap the copy column:
+   * to its right on wide screens, below it when the copy spans the width.
+   * Returns the screen centre as NDC (sx, sy) and the camera distance z that
+   * makes the globe (bezel included) fit that box.
+   */
+  #fitLayout(w, h) {
+    const R = 1.32; // bezel + inner orbit
+    const T = Math.tan((35 / 2) * Math.PI / 180);
+    const el = this.avoid();
+    const c = el?.getBoundingClientRect();
+    const box = !c || !c.width
+      ? { l: w * 0.5, r: w - 24, t: 80, b: h - 60 }
+      : c.right + 24 > w * 0.62
+        ? { l: 16, r: w - 16, t: c.bottom + 12, b: h - 48 }  // copy on top, globe below
+        : { l: c.right + 24, r: w - 24, t: 80, b: h - 60 };  // copy left, globe right
+    const avail = Math.min(box.r - box.l, box.b - box.t) / 2;
+    // Never larger than the original full-height look; never vanishingly small.
+    const rpx = Math.max(Math.min(avail, 0.9 * h / 2), Math.min(w, h) * 0.22);
+    const z = Math.min(Math.max((R * h) / (2 * T * rpx), 4.6), 16);
+    const cx = (box.l + box.r) / 2;
+    const cy = avail >= rpx ? (box.t + box.b) / 2 : h - 48 - rpx;
+    return { x: 0, y: 0, z, sx: (cx / w) * 2 - 1, sy: 1 - (cy / h) * 2 };
   }
 
   #sizePoints() {

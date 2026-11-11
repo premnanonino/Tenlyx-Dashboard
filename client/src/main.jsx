@@ -19,6 +19,7 @@ const AppLayout = lazy(() => import('./layout/AppLayout.jsx'));
 const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
 const AiPage = lazy(() => import('./pages/AiPage.jsx'));
 const Reports = lazy(() => import('./pages/Reports.jsx'));
+const CallsPage = lazy(() => import('./pages/CallsPage.jsx'));
 
 function ModuleLoader() {
   return (
@@ -67,6 +68,7 @@ createRoot(document.getElementById('root')).render(
             <Route path="ai" element={page(<AiPage />)} />
             <Route path="reports" element={page(<Reports />)} />
             <Route path="reports/:month" element={page(<Reports />)} />
+            <Route path="calls" element={page(<CallsPage />)} />
             <Route path="*" element={<ErrorPage kind="notfound" embedded />} />
           </Route>
           <Route path="*" element={<ErrorPage kind="notfound" />} />
