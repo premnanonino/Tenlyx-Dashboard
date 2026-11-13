@@ -17,6 +17,15 @@
   padding: 0 28px;
 }
 .nav__row > .mark, .nav__row > .chip { align-self: center; }
+.nav__title {
+  align-self: center;
+  color: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  text-decoration: none;
+}
 .nav .mark { text-decoration: none; color: var(--ink); }
 
 .nav__links { position: relative; display: flex; margin-left: 18px; }
@@ -48,15 +57,6 @@
   height: 3px;
   background: var(--accent);
   transition: transform 0.45s var(--ease-out), width 0.45s var(--ease-out);
-}
-.nav__badge {
-  min-width: 18px;
-  padding: 1px 5px;
-  background: var(--crit);
-  color: var(--paper);
-  font-size: 10px;
-  text-align: center;
-  animation: blink-steps 1.4s steps(2) infinite;
 }
 
 .nav__right { display: flex; align-items: center; gap: 14px; margin-left: auto; }

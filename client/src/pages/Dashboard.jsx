@@ -6,11 +6,9 @@ import { Figure, Panel, SkeletonRows, Tabs } from '../components/ui.jsx';
 import RangePicker, { rangeLabel, rangeQuery } from '../components/RangePicker.jsx';
 import Donut from '../components/charts/Donut.jsx';
 import Heatmap from '../components/charts/Heatmap.jsx';
-import PaceChart from '../components/charts/PaceChart.jsx';
 import SpendChart from '../components/SpendChart.jsx';
 import { TopList } from '../components/Breakdowns.jsx';
-import BalanceChart from '../components/BalanceChart.jsx';
-import AlertsPanel from '../components/AlertsPanel.jsx';
+import AlertsPanel, { AlertsBadge } from '../components/AlertsPanel.jsx';
 import Ledger from '../components/Ledger.jsx';
 import SystemPanel from '../components/SystemPanel.jsx';
 import Ticker from '../components/Ticker.jsx';
@@ -24,7 +22,7 @@ const DIMS = [
 
 export default function Dashboard() {
   const now = useNow(1000);
-  const { tick: k, tape, alerts } = useLive();
+  const { tick: k, tape } = useLive();
   const [range, setRange] = useState({ range: '24h' });
   const [dim, setDim] = useState('destination');
   const rq = rangeQuery(range);
@@ -34,20 +32,18 @@ export default function Dashboard() {
 
   // Above the fold: fetched immediately.
   const overview = useResource('/overview', k);
+  // Alerts live only in the Alerts card; nothing else on the page reacts to them.
+  const alerts = useResource('/alerts', k);
   const series = useResource(`/spend/series?${rq}`, k);
   const split = useResource(`/spend/products?${rq}`, k);
 
   // Below the fold: each panel fetches only once it scrolls near the viewport.
-  const [paceRef, paceSeen] = useInView();
   const [heatRef, heatSeen] = useInView();
   const [topRef, topSeen] = useInView();
-  const [balRef, balSeen] = useInView();
   const [ledgerRef, ledgerSeen] = useInView();
   const [sysRef, sysSeen, sysVisible] = useInView('100px');
-  const pace = useResource('/spend/pace', k, { enabled: paceSeen });
   const heat = useResource(`/spend/heatmap?${heatQ}`, k, { enabled: heatSeen });
   const top = useResource(`/top?by=${dim}&k=8&${rq}`, k, { enabled: topSeen });
-  const balance = useResource(`/balance/history?${rq}`, k, { enabled: balSeen });
   const system = useResource('/system', sysTick, { enabled: sysSeen });
 
   // Internals refresh on their own 4s clock, but only while on screen.
@@ -60,7 +56,6 @@ export default function Dashboard() {
   const o = overview.data;
   const cur = o?.currency || 'USD';
   const loadingFig = overview.initial;
-  const activeAlerts = alerts.data?.active.length || 0;
   const monthEnd = new Date(Date.UTC(new Date(now).getUTCFullYear(), new Date(now).getUTCMonth() + 1, 0));
 
   return (
@@ -73,7 +68,6 @@ export default function Dashboard() {
           {o ? (
             <>
               {cur} · times in UTC · balance read {ago(o.balanceAt, now)}
-              {activeAlerts > 0 && <> · <a href="#alerts" className="alert-link">{activeAlerts} active alert{activeAlerts > 1 ? 's' : ''}</a></>}
             </>
           ) : 'loading account…'}
           </p>
@@ -94,7 +88,6 @@ export default function Dashboard() {
         <Figure
           n="B" label="Available credit" loading={loadingFig} value={o?.availableCredit} format={(v) => money(v, cur)}
           sub={`limit ${money(o?.creditLimit, cur, 0)} · pending ${money(o?.pending, cur)}`}
-          tone={o && o.availableCredit < (alerts.data?.thresholds.lowBalance ?? 0) ? 'crit' : undefined}
         />
         <Figure
           n="C" label="Spend · last 24h" loading={loadingFig} value={o?.spend24h} format={(v) => money(v, cur)}
@@ -104,7 +97,6 @@ export default function Dashboard() {
         <Figure
           n="D" label="Runway" loading={loadingFig} value={o?.runwayDays} format={(v) => `${v.toFixed(1)} days`}
           sub={`at ${money(o?.avgDaily, cur)}/day (7d avg)`}
-          tone={o && o.runwayDays !== null && o.runwayDays < (alerts.data?.thresholds.runwayDays ?? 0) ? 'crit' : undefined}
         />
         <Figure
           n="E" label="Month to date" loading={loadingFig} value={o?.spendMTD} format={(v) => money(v, cur)}
@@ -126,34 +118,27 @@ export default function Dashboard() {
           ) : <SkeletonRows rows={8} h={18} />}
         </Panel>
 
-        <Panel n={3} i={4} title="Month pace" className="span-7" error={pace.error} lazyRef={paceRef}>
-          <PaceChart data={pace.data} />
-        </Panel>
-
-        <Panel n={4} i={5} title={`When you spend · ${range.range === '24h' ? '7D' : rangeLabel(range)}`} className="span-5" busy={heat.switching} error={heat.error} lazyRef={heatRef}>
+        <Panel n={3} i={4} title={`When you spend · ${range.range === '24h' ? '7D' : rangeLabel(range)}`} className="span-5" busy={heat.switching} error={heat.error} lazyRef={heatRef}>
           {heat.data ? <Heatmap data={heat.data} currency={cur} /> : <SkeletonRows rows={7} h={18} />}
           {range.range === '24h' && <p className="foot-note mono">uses the last 7 days: one day is too little for a weekly pattern</p>}
         </Panel>
 
-        <Panel n={5} i={6} title={`Top spend · ${rangeLabel(range)}`} className="span-5" busy={top.switching} error={top.error} lazyRef={topRef}
+        <Panel n={4} i={5} title={`Top spend · ${rangeLabel(range)}`} className="span-4" busy={top.switching} error={top.error} lazyRef={topRef}
           aside={<Tabs value={dim} onChange={setDim} options={DIMS} label="Top dimension" />}>
           <TopList data={top.data} currency={cur} />
         </Panel>
 
-        <Panel n={6} i={7} title="Balance" className="span-4" busy={balance.switching} error={balance.error} lazyRef={balRef}>
-          <BalanceChart data={balance.data} currency={cur} />
+        <Panel n={5} i={6} title="Alerts" className="span-3" error={alerts.error}
+          aside={<AlertsBadge data={alerts.data} />}>
+          <AlertsPanel data={alerts.data} now={now} onSaved={alerts.reload}
+            current={o ? { lowBalance: o.availableCredit, runwayDays: o.runwayDays, currency: cur } : null} />
         </Panel>
 
-        <Panel n={7} i={8} title="Alerts" className="span-3" error={alerts.error}>
-          <div id="alerts" />
-          <AlertsPanel data={alerts.data} now={now} onSaved={alerts.reload} />
-        </Panel>
-
-        <Panel n={8} i={9} title="Ledger" className="span-12" lazyRef={ledgerRef}>
+        <Panel n={6} i={7} title="Ledger" className="span-12" lazyRef={ledgerRef}>
           {ledgerSeen ? <Ledger tick={k} currency={cur} range={range} /> : <SkeletonRows rows={10} h={20} />}
         </Panel>
 
-        <Panel n={9} i={10} title="Backend internals" className="span-12" error={system.error} lazyRef={sysRef}
+        <Panel n={7} i={8} title="Backend internals" className="span-12" error={system.error} lazyRef={sysRef}
           aside={<span className="mono dim refresh-note">refresh 4s</span>}>
           <SystemPanel data={system.data} now={now} />
         </Panel>

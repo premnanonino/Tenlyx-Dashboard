@@ -14,20 +14,48 @@ import pg from 'pg';
  * The list query returns a slim row (no transcript, messages, booking_data
  * or recordings); those heavy fields are fetched one call at a time.
  */
+/**
+ * Course / organisation mapping, in order of trust:
+ *   1. the call's own golf_course_id / organization_id
+ *   2. the course line that was dialled (voice_numbers -> voice_channel_configurations);
+ *      fills ~21k calls/90 days that carry neither (the line never contradicts a call's own course)
+ *   3. the course's organisation
+ * Bump MAPPING_VERSION whenever this changes: the sync then re-reads all 90 days once.
+ */
+export const MAPPING_VERSION = 2;
+
 const LIST_SQL = `
+  WITH page AS (
+    SELECT c.id, c.call_id, c.created_at, c.updated_at, c.customer_name, c.customer_email, c.customer_phone_no,
+           c.vapi_golf_course_phone_no, c.call_length, c.hasbooking, c.booking_id, c.call_outcome, c.end_call_reason,
+           c.cost, c.config_level, c.golf_course_id, c.organization_id
+      FROM conversations c
+     WHERE c.created_at >= $1 AND c.created_at < $2 AND (c.created_at, c.id) > ($3, $4)
+     ORDER BY c.created_at, c.id
+     LIMIT $5
+  ), lines AS (
+    SELECT DISTINCT ON (regexp_replace(v.phone_number, '\\D', '', 'g'))
+           regexp_replace(v.phone_number, '\\D', '', 'g') AS digits,
+           vcc.golf_course_id, vcc.organization_id, vcc.config_level
+      FROM voice_numbers v
+      JOIN voice_channel_configurations vcc ON vcc.id = v.voice_channel_config_id
+     ORDER BY regexp_replace(v.phone_number, '\\D', '', 'g'), v.active DESC, v.updated_at DESC
+  )
   SELECT c.id, c.call_id, c.created_at, c.updated_at,
          c.customer_name, c.customer_email, c.customer_phone_no, c.vapi_golf_course_phone_no,
-         c.call_length, c.hasbooking, c.booking_id, c.call_outcome, c.end_call_reason, c.cost, c.config_level,
-         c.golf_course_id, gc.golf_course_name,
-         COALESCE(c.organization_id, gc.organization_id) AS org_id, o.org_name, o.org_type,
+         c.call_length, c.hasbooking, c.booking_id, c.call_outcome, c.end_call_reason, c.cost,
+         COALESCE(c.config_level, l.config_level) AS config_level,
+         COALESCE(c.golf_course_id, l.golf_course_id) AS golf_course_id, gc.golf_course_name,
+         COALESCE(c.organization_id, l.organization_id, gc.organization_id) AS org_id, o.org_name, o.org_type,
+         CASE WHEN c.golf_course_id IS NULL AND c.organization_id IS NULL AND (l.golf_course_id IS NOT NULL OR l.organization_id IS NOT NULL)
+              THEN 'line' END AS mapped_from,
          b.booking_number, b.status AS booking_status, b.created_at AS booking_created_at, b.tee_time_date::text AS tee_time_date
-    FROM conversations c
-    LEFT JOIN golf_courses gc ON gc.id = c.golf_course_id
-    LEFT JOIN organizations o ON o.id = COALESCE(c.organization_id, gc.organization_id)
+    FROM page c
+    LEFT JOIN lines l ON l.digits = regexp_replace(c.vapi_golf_course_phone_no, '\\D', '', 'g')
+    LEFT JOIN golf_courses gc ON gc.id = COALESCE(c.golf_course_id, l.golf_course_id)
+    LEFT JOIN organizations o ON o.id = COALESCE(c.organization_id, l.organization_id, gc.organization_id)
     LEFT JOIN bookings b ON b.id = c.booking_id
-   WHERE c.created_at >= $1 AND c.created_at < $2 AND (c.created_at, c.id) > ($3, $4)
-   ORDER BY c.created_at, c.id
-   LIMIT $5`;
+   ORDER BY c.created_at, c.id`;
 
 const DETAIL_SQL = `
   SELECT c.call_id, c.summary, c.transcript, c.translated_transcript, c.messages,
@@ -65,6 +93,7 @@ export function toCall(r) {
     orgId: r.org_id === null || r.org_id === undefined ? null : Number(r.org_id),
     org: r.org_name || null,
     orgType: r.org_type || null,
+    mappedFrom: r.mapped_from || null, // 'line' = course/organisation taken from the dialled course line
   };
 }
 
@@ -78,6 +107,10 @@ export class CourserevCalls {
       keepAlive: true,
       connectionTimeoutMillis: 10_000,
       statement_timeout: 5_000,
+      // Client-side limit too: when the tunnel drops the TCP connection the server never
+      // sees the query, statement_timeout never fires, and the query would wait forever
+      // (this stalled the call sync for a day). A timed-out client is destroyed, not reused.
+      query_timeout: 15_000,
       application_name: `tlxmon-calls-${process.env.APP_ROLE || 'all'}`,
       options: '-c default_transaction_read_only=on',
     });

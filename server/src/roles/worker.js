@@ -8,7 +8,8 @@ import { TelnyxClient } from '../providers/telnyxClient.js';
 import { BillingSync } from '../services/billingSync.js';
 import { ReportBuilder } from '../services/reportBuilder.js';
 import { CallsSync } from '../services/callsSync.js';
-import { CourserevCalls } from '../providers/courserevCalls.js';
+import { AutomationRunner } from '../services/automationRunner.js';
+import { CourserevCalls, MAPPING_VERSION } from '../providers/courserevCalls.js';
 import { openDatabase } from '../db/index.js';
 import { PgSyncTarget, pgCheckpoints } from '../persistence/pgSyncTarget.js';
 import { onShutdown, requireTelnyxKey } from '../http.js';
@@ -92,8 +93,19 @@ export async function start(config) {
   // Call History: read-only copy of CourseRev's conversations (optional).
   const callsSource = config.calls.url ? new CourserevCalls({ url: config.calls.url, max: 1, logger: log.child('calls') }) : null;
   const callsSync = callsSource
-    ? new CallsSync({ source: callsSource, repo, logger: log.child('calls'), historyDays: config.calls.historyDays, batch: config.calls.batch })
+    ? new CallsSync({ source: callsSource, repo, logger: log.child('calls'), historyDays: config.calls.historyDays, batch: config.calls.batch, mappingVersion: MAPPING_VERSION })
     : null;
+  // Call Automation: executes queued test runs. Executors (API, PHONE) arrive in later phases.
+  if (config.automation.invalidTestNumbers.length) {
+    log.warn('ignoring invalid AUTOMATION_TEST_NUMBERS entries', { invalid: config.automation.invalidTestNumbers });
+  }
+  const automation = new AutomationRunner({
+    repo: db.automation,
+    executors: {},
+    logger: log.child('automation'),
+    concurrency: config.automation.concurrency,
+    queueTimeoutMs: config.automation.queueTimeoutMs,
+  });
   const startedAt = Date.now();
   let totalRecords = await repo.recordCount();
   bus.on('records', (e) => { totalRecords += e.payload.added; });
@@ -123,6 +135,7 @@ export async function start(config) {
       reports: reports.stats,
       totalRecords,
       calls: callsSync ? { ...callsSync.progress(), source: callsSource.metrics } : null,
+      automation: automation.progress(),
       reportMeta: {
         liveFrom: sync.backfill?.target ?? null,
         historyFrom: sync.history?.from ?? null,
@@ -151,20 +164,38 @@ export async function start(config) {
     // Retention: raw records and balance snapshots older than the window, once counted and finalized.
     .add({ name: 'retention', everyMs: RETENTION_EVERY_MS, run: lane('retention', () => reports.prune()) })
     .add({ name: 'status', everyMs: config.worker.heartbeatMs, jitter: 0, run: publishStatus })
-    // "Sync now" from the dashboard (queued by the API, rate-limited there).
+    // "Sync now" from the dashboard (queued by the API, rate-limited there):
+    // everything at once — Telnyx records, balance, groups, assistants, and the
+    // call history (recent windows re-read now, any retry backoff cut short).
     .add({
       name: 'sync-requests', everyMs: 5_000, jitter: 0,
       run: async () => {
         if (!(await repo.claimSyncRequests())) return;
         log.info('manual sync requested');
-        await Promise.allSettled([lane('records', () => sync.syncRecords())(), lane('balance', () => sync.syncBalance())()]);
+        const calls = callsSync
+          ? lane('calls', async () => {
+            const due = await callsSync.refresh();
+            scheduler.runNow('calls');
+            log.info('manual call sync', { windows: due });
+          })()
+          : null;
+        await Promise.allSettled([
+          lane('records', () => sync.syncRecords())(),
+          lane('balance', () => sync.syncBalance())(),
+          lane('groups', () => sync.syncGroups())(),
+          lane('assistants', () => sync.syncAssistants())(),
+          calls,
+        ]);
       },
     });
 
   // Call History: one small read-only batch from CourseRev per tick (see services/callsSync.js).
   if (callsSync) {
-    scheduler.add({ name: 'calls', everyMs: config.calls.tickMs, jitter: 0, maxBackoffMs: 5 * 60_000, run: lane('calls', () => callsSync.tick()) });
+    scheduler.add({ name: 'calls', everyMs: config.calls.tickMs, jitter: 0, maxBackoffMs: 5 * 60_000, timeoutMs: 60_000, run: lane('calls', () => callsSync.tick()) });
   }
+
+  await automation.recover().catch((err) => log.warn('could not recover automation runs', { err: err.message }));
+  scheduler.add({ name: 'automation', everyMs: config.automation.tickMs, jitter: 0, maxBackoffMs: 60_000, timeoutMs: 30_000, run: lane('automation', () => automation.tick()) });
 
   log.info('sync worker started', { rps: config.telnyx.outboundRps, types: provider.recordTypes, records: totalRecords });
   await sync.bootstrap();
@@ -174,6 +205,7 @@ export async function start(config) {
 
   onShutdown(async () => {
     scheduler.stop();
+    await automation.stop();
     await publishStatus().catch(() => {});
     clearTimeout(leaseTimer);
     await lock.release();

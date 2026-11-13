@@ -138,7 +138,6 @@
   text-transform: uppercase;
 }
 .dash-title p { margin: 0; font-size: 12px; color: var(--muted); }
-.alert-link { color: var(--crit); font-weight: 600; }
 
 .figures {
   display: grid;
@@ -355,18 +354,53 @@
 .alert__d { margin: 3px 0 0; font-size: 11.5px; color: var(--ink-2); }
 .alert__when { margin: 4px 0 0; font-size: 10.5px; color: var(--muted); }
 
-.alert-history { margin: 0 0 12px; padding: 0; list-style: none; font-size: 11px; color: var(--muted); }
-.alert-history li { padding: 3px 0; }
+/* Card header badge */
+.al-badge { padding: 2px 6px; font-size: 10px; font-weight: 600; letter-spacing: 0.06em; }
+.al-badge--ok { border: 1px solid var(--ok); color: var(--ok); }
+.al-badge--warn { background: var(--warn); color: var(--paper); }
+.al-badge--crit { background: var(--crit); color: var(--paper); animation: blink-steps 1.2s steps(2) infinite; }
 
-.thresholds { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--rule); }
+.al-status { margin: 0 0 10px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--warn); }
+.al-status--crit { color: var(--crit); }
+
+.al-sec { margin-bottom: 12px; padding-top: 10px; border-top: 1px solid var(--rule); }
+.al-h { display: flex; justify-content: space-between; align-items: baseline; margin: 0 0 6px; font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); }
+.al-more { padding: 0; border: 0; background: none; font-size: 10.5px; letter-spacing: 0.04em; text-transform: none; color: var(--accent); }
+.al-more:hover { text-decoration: underline; }
+
+/* Rule checklist */
+.al-rules { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.al-rule { display: grid; grid-template-columns: 8px 1fr auto; align-items: center; gap: 8px; font-size: 12.5px; }
+.al-led { width: 8px; height: 8px; background: var(--ok); }
+.al-rule--warn .al-led { background: var(--warn); }
+.al-rule--crit .al-led { background: var(--crit); animation: blink-steps 1.2s steps(2) infinite; }
+.al-rule__s { font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.al-rule--warn .al-rule__s { color: var(--warn); font-weight: 600; }
+.al-rule--crit .al-rule__s { color: var(--crit); font-weight: 600; }
+.al-rule--warn .al-rule__l, .al-rule--crit .al-rule__l { font-weight: 600; }
+
+/* History */
+.alert-history { margin: 0; padding: 0; list-style: none; font-size: 11px; color: var(--muted); }
+.alert-history li { display: grid; grid-template-columns: 6px 1fr; column-gap: 8px; padding: 3px 0; }
+.al-dot { width: 6px; height: 6px; margin-top: 5px; background: var(--warn); }
+.al-dot--critical { background: var(--crit); }
+.al-hist__t { color: var(--ink-2); text-decoration: line-through; text-decoration-color: var(--muted); }
+.al-hist__m { grid-column: 2; font-size: 10.5px; }
+
+.thresholds { display: grid; gap: 8px; padding-top: 10px; border-top: 1px solid var(--rule); }
 .thresholds__h { margin: 0 0 2px; font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); }
 .thresholds label { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; }
+.thresholds label.is-changed .field { border-bottom-color: var(--accent); }
+.thr__l { display: grid; gap: 1px; }
+.thr__now { font-size: 10.5px; color: var(--muted); }
+.field input[aria-invalid="true"] { color: var(--crit); }
 .field { display: inline-flex; align-items: center; border-bottom: 1px solid var(--ink); }
 .field input { width: 70px; padding: 3px 4px; border: 0; background: transparent; font-family: var(--font-mono); font-size: 13px; text-align: right; }
 .field input:focus { outline: none; background: var(--paper-2); }
 .field em { width: 14px; font-style: normal; font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
 .thresholds__foot { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
-.thresholds__msg { font-size: 11px; color: var(--muted); }
+.thresholds__msg { font-size: 11px; color: var(--ok); }
+.thresholds__msg.is-err { color: var(--crit); }
 
 /* ---- ledger ------------------------------------------------------------ */
 .ledger__bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px; }

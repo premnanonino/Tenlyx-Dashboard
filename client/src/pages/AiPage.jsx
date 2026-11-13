@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useResource } from '../lib/api.js';
 import { money, moneySmart, ms, num, pct, shortModel, splitModel, modelColors, duration, compact } from '../lib/format.js';
-import { Figure, Panel, SkeletonRows } from '../components/ui.jsx';
+import { Figure, Panel, SkeletonRows, Tabs } from '../components/ui.jsx';
 import RangePicker, { rangeLabel, rangeQuery } from '../components/RangePicker.jsx';
 import Donut from '../components/charts/Donut.jsx';
 import Radar from '../components/charts/Radar.jsx';
@@ -70,12 +70,12 @@ const AWARDS = [
   { key: 'fastest', label: 'Fastest', fmt: (v) => `${ms(v)} p50` },
 ];
 
-function Scorecard({ data, colorFor, currency }) {
-  if (!data) return <SkeletonRows rows={9} h={20} />;
+/** The four award winners, one per axis, as a strip across the panel. */
+function Awards({ data, colorFor, currency }) {
+  if (!data) return <SkeletonRows rows={2} h={20} />;
   const sc = data.scorecard;
   return (
-    <>
-      <div className="awards">
+    <div className="awards">
         {AWARDS.map((a, i) => {
           const w = sc[a.key];
           return (
@@ -90,13 +90,7 @@ function Scorecard({ data, colorFor, currency }) {
             </div>
           );
         })}
-      </div>
-      <ModelScatter models={data.models} colorFor={colorFor} currency={currency} />
-      <p className="foot-note mono">
-        No single &quot;best&quot;: each award is one axis. Models need ≥{sc.minSample} conversations to qualify.
-        &quot;Value&quot; = spend ÷ resolved conversations.
-      </p>
-    </>
+    </div>
   );
 }
 
@@ -117,18 +111,54 @@ function Outcomes({ data }) {
   const ch = Object.entries(data.channels).sort((a, b) => b[1] - a[1]).map(([key, value]) => ({ key, value }));
   return (
     <div className="outcomes">
-      <Donut items={outs} colorFor={(k) => OUTCOME_COLOR[k]} labelFor={(k) => OUTCOME_LABEL[k]} format={(v) => num(v)}
-        caption="Conversation outcomes" centerLabel="Conversations" size={172} />
-      <p className="sub-h mono">Channel</p>
-      <Donut items={ch} variant="pie" colorFor={(k) => CHANNEL_COLOR[k] || 'var(--m-2)'} labelFor={(k) => k[0].toUpperCase() + k.slice(1)}
-        format={(v) => num(v)} caption="Conversations by channel" size={120} />
-      <dl className="mini-stats">
-        <div><dt>Avg length</dt><dd className="mono">{duration(data.totals.avgDurationSec)}</dd></div>
-        <div><dt>Avg turns</dt><dd className="mono">{data.totals.avgTurns?.toFixed(1) ?? '—'}</dd></div>
-        <div><dt>Tokens</dt><dd className="mono">{compact(data.totals.tokens)}</dd></div>
-      </dl>
+      <div>
+        <p className="sub-h mono">Outcome</p>
+        <Donut items={outs} colorFor={(k) => OUTCOME_COLOR[k]} labelFor={(k) => OUTCOME_LABEL[k]} format={(v) => num(v)}
+          caption="Conversation outcomes" centerLabel="Conversations" size={172} />
+      </div>
+      <div>
+        <p className="sub-h mono">Channel</p>
+        <Donut items={ch} variant="pie" colorFor={(k) => CHANNEL_COLOR[k] || 'var(--m-2)'} labelFor={(k) => k[0].toUpperCase() + k.slice(1)}
+          format={(v) => num(v)} caption="Conversations by channel" size={120} />
+        <dl className="mini-stats">
+          <div><dt>Avg length</dt><dd className="mono">{duration(data.totals.avgDurationSec)}</dd></div>
+          <div><dt>Avg turns</dt><dd className="mono">{data.totals.avgTurns?.toFixed(1) ?? '—'}</dd></div>
+          <div><dt>Tokens</dt><dd className="mono">{compact(data.totals.tokens)}</dd></div>
+        </dl>
+      </div>
     </div>
   );
+}
+
+const MODEL_VIEWS = [
+  { value: 'time', label: 'Over time' },
+  { value: 'value', label: 'Cost vs resolution' },
+  { value: 'profile', label: 'Profile' },
+  { value: 'latency', label: 'Latency' },
+  { value: 'outcomes', label: 'Outcomes' },
+];
+
+/** The chart side of the merged Models panel: one view at a time. */
+function ModelView({ view, data, colorFor, currency, rangeKey }) {
+  if (!data) return <SkeletonRows rows={8} h={22} />;
+  const noModels = !data.models.length && view !== 'outcomes';
+  if (noModels) return <p className="empty mono">No models in range.</p>;
+  switch (view) {
+    case 'value':
+      return (
+        <>
+          <ModelScatter models={data.models} colorFor={colorFor} currency={currency} />
+          <p className="foot-note mono">
+            No single &quot;best&quot;: each award is one axis. Models need ≥{data.scorecard.minSample} conversations to qualify.
+            &quot;Value&quot; = spend ÷ resolved conversations.
+          </p>
+        </>
+      );
+    case 'profile': return <div className="models__radar"><Radar models={data.models} colorFor={colorFor} /></div>;
+    case 'latency': return <Histogram key={rangeKey} latency={data.latency} colorFor={colorFor} />;
+    case 'outcomes': return <Outcomes data={data} />;
+    default: return <ModelBars series={data.series} colorFor={colorFor} />;
+  }
 }
 
 function Assistants({ data, colorFor, currency }) {
@@ -178,6 +208,7 @@ export default function AiPage() {
   const t = d?.totals;
   const cur = ov.data?.currency || 'USD';
   const colorFor = useMemo(() => modelColors(d?.models.map((m) => m.model) ?? []), [d]);
+  const [view, setView] = useState('time');
 
   return (
     <>
@@ -211,29 +242,25 @@ export default function AiPage() {
       </section>
 
       <div className="dash-grid">
-        <Panel n={1} i={2} title="Most used model" className="span-5" busy={ai.switching} error={ai.error}>
-          <MostUsed data={d} colorFor={colorFor} currency={cur} />
+        <Panel n={1} i={2} title={`Models · ${rangeLabel(range)}`} className="span-12" busy={ai.switching} error={ai.error}>
+          <Awards data={d} colorFor={colorFor} currency={cur} />
+          <div className="models">
+            <div className="models__lead">
+              <MostUsed data={d} colorFor={colorFor} currency={cur} />
+            </div>
+            <div className="models__view">
+              <Tabs value={view} onChange={setView} options={MODEL_VIEWS} label="Model chart" />
+              <div className="models__chart" key={view}>
+                <ModelView view={view} data={d} colorFor={colorFor} currency={cur} rangeKey={rangeLabel(range)} />
+              </div>
+            </div>
+          </div>
         </Panel>
-        <Panel n={2} i={3} title="Which model is better" className="span-7" busy={ai.switching}>
-          <Scorecard data={d} colorFor={colorFor} currency={cur} />
-        </Panel>
-        <Panel n={3} i={4} title="Model profile" className="span-5" busy={ai.switching}>
-          {d ? (d.models.length ? <Radar models={d.models} colorFor={colorFor} /> : <p className="empty mono">No models in range.</p>) : <SkeletonRows rows={8} h={22} />}
-        </Panel>
-        <Panel n={4} i={5} title="Response latency" className="span-7" busy={ai.switching}>
-          {d ? <Histogram key={rangeLabel(range)} latency={d.latency} colorFor={colorFor} /> : <SkeletonRows rows={8} h={22} />}
-        </Panel>
-        <Panel n={5} i={6} title={`Conversations by model · ${rangeLabel(range)}`} className="span-8" busy={ai.switching}>
-          {d ? <ModelBars series={d.series} colorFor={colorFor} /> : <SkeletonRows rows={8} h={22} />}
-        </Panel>
-        <Panel n={6} i={7} title="Outcomes & channel" className="span-4" busy={ai.switching}>
-          <Outcomes data={d} />
-        </Panel>
-        <Panel n={7} i={8} title="Model leaderboard" className="span-12" busy={ai.switching}>
+        <Panel n={2} i={3} title="Model leaderboard" className="span-12" busy={ai.switching}>
           {d ? <Leaderboard models={d.models} colorFor={colorFor} currency={cur} best={d.scorecard} /> : <SkeletonRows rows={6} h={22} />}
           {d && <p className="foot-note mono">click a column to sort · highlighted cells are award winners · rank = conversation volume</p>}
         </Panel>
-        <Panel n={8} i={9} title="Assistants" className="span-12" busy={ai.switching}>
+        <Panel n={3} i={4} title="Assistants" className="span-12" busy={ai.switching}>
           <Assistants data={d} colorFor={colorFor} currency={cur} />
         </Panel>
       </div>

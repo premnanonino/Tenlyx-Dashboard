@@ -39,7 +39,10 @@ test('libsql: migrations are idempotent', async (t) => {
   await migrate(client);
   await migrate(client);
   const rs = await client.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name");
-  assert.deepEqual(rs.rows.map((r) => r.name), ['balance_snapshots', 'billing_records', 'calls', 'kv', 'rollup_months', 'sessions', 'sync_events', 'sync_requests']);
+  assert.deepEqual(rs.rows.map((r) => r.name), [
+    'automation_cases', 'automation_run_assertions', 'automation_runs', 'automation_suites',
+    'balance_snapshots', 'billing_records', 'calls', 'kv', 'rollup_months', 'sessions', 'sync_events', 'sync_requests',
+  ]);
 });
 
 test('libsql: billing records insert and read back intact', async (t) => {

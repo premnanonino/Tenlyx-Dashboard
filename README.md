@@ -213,6 +213,15 @@ All responses are JSON unless noted. Read endpoints set `x-cache: HIT|MISS`.
 | GET | `/api/system` | internals: breaker, cache, single-flight, store, jobs, SSE, limiter, memory |
 | GET | `/api/stream` | SSE: `hello`, `balance`, `records`, `alert`, `breaker` |
 | GET | `/api/health`, `/api/ready` | probes |
+| GET | `/api/automation/meta` | Call Automation: allow-listed test numbers, test types, assertion kinds, limits (`enabled: false` without a database) |
+| GET | `/api/automation/overview?since=` | test totals, runs since `since` (epoch ms, default 24 h) with pass/fail and success rate, recent failures, per-suite status |
+| GET / POST / PUT / DELETE | `/api/automation/suites[/:id]` | test suites (deleting one keeps its tests, unassigned) |
+| GET / POST / PUT / DELETE | `/api/automation/cases[/:id]` | test cases (`PHONE`, `API`, `HYBRID`); `PUT` with `version` returns 409 if someone else saved first |
+| POST | `/api/automation/runs` `{ caseIds }` | queue one run per test under a shared `batchId` (202; 5 rate-limit tokens). The worker executes runs; the API never does |
+| GET | `/api/automation/runs?caseId=&batchId=&status=&beforeId=&limit=` | run history, newest first, with assertion counts |
+| GET / POST | `/api/automation/runs/:id`, `/api/automation/runs/:id/cancel` | run detail (case snapshot, assertion results, artifacts); cancel a queued or running run |
+
+**Call Automation safety.** Phone tests can only dial numbers in `AUTOMATION_TEST_NUMBERS`. The server checks this when a test is saved and again when it is queued, so removing a number from the list blocks tests already saved with it. API tests store a path only; the host comes from configuration. Every run has a timeout (default 300 s, at most 900 s). The worker aborts the run at its deadline, and the database marks it `timeout` even if the executor never returns. Runs left `running` by a crashed worker are marked `error` when the worker starts.
 
 ### Alert rules (`services/alertEngine.js`)
 

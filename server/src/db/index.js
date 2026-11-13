@@ -4,6 +4,7 @@
  * libSQL and vice versa. Both return the same shape:
  *
  *   repo            PgRepo | LibsqlRepo (same methods)
+ *   automation      PgAutomationRepo | LibsqlAutomationRepo (Call Automation; same methods)
  *   sessionStore()  PgSessionStore | LibsqlSessionStore
  *   workerLock()    null if another worker holds it, else { release(), renew(), renewEveryMs }
  *                   (renewEveryMs is null for PostgreSQL: its advisory lock needs no renewal)
@@ -21,12 +22,14 @@ export async function openDatabase(config, { logger } = {}) {
   if (database.backend === 'libsql') {
     const { connect, migrate, acquireLease } = await import('./libsql.js');
     const { LibsqlRepo } = await import('../persistence/libsqlRepo.js');
+    const { LibsqlAutomationRepo } = await import('../persistence/libsqlAutomationRepo.js');
     const { LibsqlSessionStore, CachedSessionStore } = await import('../auth/auth.js');
     const client = await connect(database, { logger });
     await migrate(client);
     return {
       backend: 'libsql',
       repo: new LibsqlRepo({ client, logger: logger?.child?.('db') }),
+      automation: new LibsqlAutomationRepo({ client, logger: logger?.child?.('automation') }),
       sessionStore: (ttlMs) => new CachedSessionStore(new LibsqlSessionStore({ client, ttlMs })),
       workerLock: () => acquireLease(client, 'worker', { ttlMs: WORKER_LEASE_TTL_MS, logger }),
       close: async () => client.close(),
@@ -35,12 +38,14 @@ export async function openDatabase(config, { logger } = {}) {
 
   const { connect, migrate, acquireSingleton } = await import('./pg.js');
   const { PgRepo } = await import('../persistence/pgRepo.js');
+  const { PgAutomationRepo } = await import('../persistence/pgAutomationRepo.js');
   const { PgSessionStore, CachedSessionStore } = await import('../auth/auth.js');
   const pool = await connect(config.db, { logger });
   await migrate(pool);
   return {
     backend: 'postgres',
     repo: new PgRepo({ pool, logger: logger?.child?.('db') }),
+    automation: new PgAutomationRepo({ pool, logger: logger?.child?.('automation') }),
     sessionStore: (ttlMs) => new CachedSessionStore(new PgSessionStore({ pool, ttlMs })),
     workerLock: async () => {
       const client = await acquireSingleton(pool, WORKER_LOCK);

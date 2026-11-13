@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { api, useResource } from '../lib/api.js';
+import { api } from '../lib/api.js';
 import { useStream } from '../lib/stream.js';
 import { useNow } from '../lib/hooks.js';
 import { ago, utcDate, utcTime } from '../lib/format.js';
@@ -58,7 +58,7 @@ const LINKS = [
 ];
 
 /** Nav links with a solid indicator that slides to the active tab. */
-function NavLinks({ alerts }) {
+function NavLinks() {
   const listRef = useRef(null);
   const location = useLocation();
   const [bar, setBar] = useState(null);
@@ -68,7 +68,7 @@ function NavLinks({ alerts }) {
     if (el) setBar({ x: el.offsetLeft, w: el.offsetWidth });
   }, []);
 
-  useLayoutEffect(() => { measure(); }, [location.pathname, measure, alerts]);
+  useLayoutEffect(() => { measure(); }, [location.pathname, measure]);
   useEffect(() => {
     window.addEventListener('resize', measure);
     document.fonts?.ready.then(measure);
@@ -83,7 +83,6 @@ function NavLinks({ alerts }) {
             <NavLink to={l.to} end={l.end} className={({ isActive }) => (isActive ? 'is-active' : '')}>
               <span className="nav__n mono">{l.n}</span>
               {l.label}
-              {l.end && alerts > 0 && <span className="nav__badge mono" title={`${alerts} active alerts`}>{alerts}</span>}
             </NavLink>
           </li>
         ))}
@@ -143,7 +142,6 @@ function Shell({ user, location }) {
 
   const onRecords = useCallback((evt) => setTape((t) => [...evt.latest, ...t].slice(0, 24)), []);
   const stream = useStream({ onRecords });
-  const alerts = useResource('/alerts', stream.tick);
 
   useEffect(() => {
     api('/records?range=24h&limit=16').then((r) => setTape((t) => (t.length ? t : r.rows))).catch(() => {});
@@ -184,10 +182,9 @@ function Shell({ user, location }) {
 
   const section = location.pathname.split('/')[2] || 'overview';
   const sec = SECTIONS[section] ?? UNKNOWN_SECTION;
-  const activeAlerts = alerts.data?.active.length || 0;
 
   return (
-    <LiveContext.Provider value={{ stream, tick: stream.tick, tape, mode: stream.mode, alerts }}>
+    <LiveContext.Provider value={{ stream, tick: stream.tick, tape, mode: stream.mode }}>
       <div className="dash">
         <a href="#main" className="skip">Skip to content</a>
         <TopProgress />
@@ -198,9 +195,8 @@ function Shell({ user, location }) {
           <div className="hero__navbox on-dark" ref={navSpacer}>
         <header className={`nav nav--float ${stuck ? 'is-stuck' : ''}`}>
           <div className="nav__row">
-            <Link to="/" className="mark" aria-label="Back to globe">TLX/MON</Link>
-            {stream.mode && <span className="chip mono chip--live">LIVE API</span>}
-            <NavLinks alerts={activeAlerts} />
+            <Link to="/" className="nav__title" aria-label="Voice Dashboard, back to globe">Voice Dashboard</Link>
+            <NavLinks />
             <div className="nav__right">
               <span className={`stream mono stream--${stream.status}`}><i />{streamLabel}</span>
               {fill && !fill.done && (

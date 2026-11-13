@@ -6,6 +6,8 @@ import { RingBuffer, percentile } from '../dsa/RingBuffer.js';
  * - +/- jitter so jobs don't align and burst the upstream API
  * - exponential backoff on consecutive failures, reset on success
  * - latency samples kept in a ring buffer for p50 / p95
+ * - optional per-job timeoutMs watchdog: a run that never settles (e.g. a query on
+ *   a silently dropped connection) fails instead of stopping the job for good
  */
 export class Scheduler {
   constructor({ logger } = {}) {
@@ -14,10 +16,10 @@ export class Scheduler {
     this.running = false;
   }
 
-  add({ name, everyMs, run, jitter = 0.1, maxBackoffMs = 10 * 60_000 }) {
+  add({ name, everyMs, run, jitter = 0.1, maxBackoffMs = 10 * 60_000, timeoutMs = 0 }) {
     this.jobs.set(name, {
-      name, everyMs, run, jitter, maxBackoffMs,
-      timer: null, runs: 0, failures: 0, consecutiveFailures: 0,
+      name, everyMs, run, jitter, maxBackoffMs, timeoutMs,
+      timer: null, inFlight: false, runs: 0, failures: 0, consecutiveFailures: 0,
       lastRunAt: 0, lastOkAt: 0, lastError: null, nextRunAt: 0,
       durations: new RingBuffer(120),
     });
@@ -42,6 +44,21 @@ export class Scheduler {
     return job.run();
   }
 
+  /**
+   * Run a scheduled job right away instead of waiting for its timer, cutting
+   * short any failure backoff (e.g. "Sync now"). The run goes through the
+   * normal chain, so a success resets the backoff and the next tick follows
+   * on the usual interval. No-op if the job is already running.
+   */
+  runNow(name) {
+    const job = this.jobs.get(name);
+    if (!job) throw new Error(`unknown job ${name}`);
+    if (!this.running || job.inFlight) return false;
+    clearTimeout(job.timer);
+    this.#tick(job);
+    return true;
+  }
+
   #schedule(job, delay) {
     if (!this.running) return;
     job.nextRunAt = Date.now() + delay;
@@ -52,10 +69,18 @@ export class Scheduler {
   async #tick(job) {
     if (!this.running) return;
     const t0 = performance.now();
+    job.inFlight = true;
     job.lastRunAt = Date.now();
     job.runs++;
+    let watchdog = null;
     try {
-      await job.run();
+      const run = job.run();
+      await (job.timeoutMs > 0
+        ? Promise.race([run, new Promise((_, reject) => {
+          watchdog = setTimeout(() => reject(new Error(`${job.name} timed out after ${job.timeoutMs} ms`)), job.timeoutMs);
+          watchdog.unref?.();
+        })])
+        : run);
       job.consecutiveFailures = 0;
       job.lastOkAt = Date.now();
       job.lastError = null;
@@ -65,6 +90,8 @@ export class Scheduler {
       job.lastError = err.message;
       this.logger?.warn('job failed', { job: job.name, err: err.message, streak: job.consecutiveFailures });
     } finally {
+      clearTimeout(watchdog);
+      job.inFlight = false;
       job.durations.push(performance.now() - t0);
       const base = job.consecutiveFailures
         ? Math.min(job.everyMs * 2 ** job.consecutiveFailures, job.maxBackoffMs)

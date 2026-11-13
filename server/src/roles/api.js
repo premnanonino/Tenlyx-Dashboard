@@ -51,7 +51,12 @@ export async function start(config) {
 
   // ---- call history (optional): list from memory, detail from CourseRev ------
   const calls = config.calls.url ? {
-    store: new CallsStore({ retentionMs: config.calls.historyDays * 86_400_000 }),
+    store: new CallsStore({
+      retentionMs: config.calls.historyDays * 86_400_000,
+      internalDomains: config.calls.internalDomains,
+      internalNumbers: config.calls.internalNumbers,
+      highVolumePerDay: config.calls.highVolumePerDay,
+    }),
     source: new CourserevCalls({ url: config.calls.url, max: 2, logger: log.child('calls') }),
   } : null;
 
@@ -210,6 +215,7 @@ export async function start(config) {
       config, store, analytics, alerts, sync, scheduler: schedulerView, breaker, flight, cache, limiter, sse, bus,
       provider: { kind: 'telnyx (via sync worker)' }, aiAnalytics, reports, rollups, auth, logger: log.child('routes'),
       calls: calls ? { ...calls, syncInfo: () => remote.status?.calls ?? null } : null,
+      automation: { repo: db.automation, workerInfo: () => remote.status?.automation ?? null },
       triggerSync: (by) => repo.requestSync(by, config.worker.syncRequestCooldownMs),
       syncStatus: async () => ({ ...(remote.status?.progress ?? {}), worker: workerSummary(remote.status) }),
       workerStatus: async () => ({ ...workerSummary(remote.status), recentEvents: await repo.recentEvents(10) }),

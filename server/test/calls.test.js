@@ -264,3 +264,108 @@ test('compressJson: gzips large JSON for gzip clients only', () => {
   assert.deepEqual(run({ ok: true }, 'gzip').sent.plain, { ok: true }, 'small bodies are sent as is');
   assert.ok(run(big, '').sent.plain, 'clients without gzip get plain JSON');
 });
+
+test('repeat callers: grouping by phone, busiest day, courses, needs-attention, internal hidden', () => {
+  const s = new CallsStore({ internalNumbers: ['+1 555 999 0000'], highVolumePerDay: 5 });
+  const day = Date.UTC(2026, 10, 9);
+  const A = '+1 (478) 555-0101'; const B = '14785550202'; // same caller written two ways must be one caller
+  const list = [
+    call(day + 1 * HOUR, { phone: A, name: 'Emily', courseId: 7, course: 'Pine Valley', booked: false, outcome: 'Golf course information' }),
+    call(day + 2 * HOUR, { phone: '14785550101', name: null, courseId: 7, course: 'Pine Valley', booked: false, outcome: 'Tee time unavailable' }),
+    call(day + 3 * HOUR, { phone: A, name: null, courseId: 8, course: 'Oak Ridge', booked: false, outcome: 'Request to pro-shop' }),
+    call(day + DAY + HOUR, { phone: A, name: null, courseId: 7, course: 'Pine Valley', booked: false, outcome: null }),
+    call(day + 5 * HOUR, { phone: B, name: 'Sam', courseId: 8, course: 'Oak Ridge', booked: true, outcome: 'Booking created' }),
+    call(day + 6 * HOUR, { phone: B, name: null, courseId: 8, course: 'Oak Ridge', booked: false }),
+    call(day + 7 * HOUR, { phone: '+1 555 999 0000', name: 'Test line' }),                 // internal number
+    call(day + 8 * HOUR, { phone: '15550001234', email: 'qa@courserev.ai' }),              // internal email
+    call(day + 9 * HOUR, { phone: 'anonymous' }),                                           // no usable phone
+    ...Array.from({ length: 6 }, (_, i) => call(day + 10 * HOUR + i * MIN, { phone: '+1 222 333 4444', booked: false })), // dialer
+  ];
+  s.upsert(list.map((c) => ({ data: c })));
+  const r = s.repeatCallers({ from: day, to: day + 3 * DAY });
+  const emily = r.rows.find((x) => x.calls === 4);
+  assert.ok(emily, 'formatting differences in the phone number do not split a caller');
+  assert.equal(emily.name, 'Emily', 'name from the latest call that has one');
+  assert.deepEqual(emily.busiest, { day, count: 3 });
+  assert.deepEqual(emily.courses.map((c) => [c.label, c.count]), [['Pine Valley', 3], ['Oak Ridge', 1]]);
+  assert.equal(emily.needsAttention, true, '3 calls on one day, never booked');
+  const sam = r.rows.find((x) => x.name === 'Sam');
+  assert.equal(sam.needsAttention, false);
+  assert.ok(!r.rows.some((x) => x.internal), 'internal numbers and emails are hidden by default');
+  const dialer = r.rows.find((x) => x.calls === 6);
+  assert.equal(dialer.highVolume, true);
+  assert.equal(r.summary.uniqueCallers, 3, 'Emily, Sam, the dialer (anonymous and internal excluded)');
+  assert.equal(r.summary.repeatCallers, 3);
+
+  assert.equal(s.repeatCallers({ from: day, to: day + 3 * DAY, includeInternal: true }).summary.uniqueCallers, 5);
+  assert.deepEqual(s.repeatCallers({ from: day, to: day + 3 * DAY, sort: 'attention' }).rows.map((x) => x.calls).sort(), [4, 6]);
+  assert.deepEqual(s.repeatCallers({ from: day, to: day + 3 * DAY, minPerDay: 3, sort: 'busiest' }).rows.map((x) => x.busiest.count), [6, 3]);
+  assert.equal(s.repeatCallers({ from: day, to: day + 3 * DAY, courseId: 8 }).rows.find((x) => x.id === emily.id), undefined, 'filters apply before grouping (Emily called Oak Ridge once)');
+
+  // Rows in the calls list carry the "call N of M that day" count.
+  const rows = s.query({ from: day, to: day + DAY }).rows;
+  const third = rows.find((x) => x.outcome === 'Request to pro-shop');
+  assert.deepEqual([third.dayIndex, third.dayCount], [3, 3]);
+  assert.equal(third.callerId, emily.id);
+  assert.ok(!('_ph' in third) && !('_caller' in third), 'helper fields are not exposed');
+  assert.equal(s.query({ from: day, to: day + DAY }).summary.uniqueCallers, 3);
+
+  // Caller timeline: days newest first, calls newest first within a day.
+  const t = s.caller(emily.id, { from: day, to: day + 3 * DAY });
+  assert.equal(t.calls, 4);
+  assert.deepEqual(t.days.map((d) => [d.day, d.count, d.courses]), [[day + DAY, 1, 1], [day, 3, 2]]);
+  assert.ok(t.days[1].calls[0].ts > t.days[1].calls[2].ts);
+  assert.equal(s.caller('nope-nope-nope-1'), null);
+  assert.equal(s.get(third.callId).callerCalls, 4);
+});
+
+test('repeat callers: a call with only an organisation is its own place, not "Unknown course"', () => {
+  const s = new CallsStore();
+  const day = Date.UTC(2026, 10, 4);
+  const ph = '18027525441';
+  s.upsert([
+    call(day + 11 * HOUR + 41 * MIN, { phone: ph, name: null, courseId: null, course: null, orgId: 50, org: 'Sebring International Golf Resort' }),
+    call(day + 11 * HOUR + 39 * MIN, { phone: ph, name: null, courseId: null, course: null, orgId: 50, org: 'Sebring International Golf Resort' }),
+    call(day + 11 * HOUR + 38 * MIN, { phone: ph, name: null, courseId: null, course: null, orgId: null, org: null }),
+  ].map((c) => ({ data: c })));
+  const [k] = s.repeatCallers({ from: day, to: day + DAY }).rows;
+  assert.deepEqual(k.courses.map((c) => [c.label, c.count]), [['Sebring International Golf Resort', 2], ['Unknown course', 1]]);
+  const t = s.caller(k.id, { from: day, to: day + DAY });
+  assert.deepEqual(t.courses.map((c) => [c.label, c.count]), [['Sebring International Golf Resort', 2], ['Unknown course', 1]]);
+  assert.equal(t.days[0].courses, 2, 'the day counts 2 places, not 1');
+});
+
+test('CallsSync: a new mapping version re-reads every window once', async () => {
+  const rows = Array.from({ length: 12 }, (_, i) => call(NOW - i * DAY - HOUR));
+  const src = fakeSource(rows);
+  const repo = fakeRepo();
+  const v1 = new CallsSync({ source: src, repo, historyDays: 90, batch: 5, mappingVersion: 1 });
+  while (await v1.tick(NOW));
+  const pagesAfterV1 = src.pages;
+  const v1again = new CallsSync({ source: src, repo, historyDays: 90, batch: 5, mappingVersion: 1 });
+  while (await v1again.tick(NOW + MIN + 1));
+  assert.ok(src.pages - pagesAfterV1 <= 2, 'same version: only the short window runs');
+  rows.forEach((r) => { r.course = `${r.course} (mapped)`; });
+  const v2 = new CallsSync({ source: src, repo, historyDays: 90, batch: 5, mappingVersion: 2 });
+  while (await v2.tick(NOW + 2 * MIN));
+  assert.ok([...repo.calls.values()].every((j) => JSON.parse(j).course.endsWith('(mapped)')), 'all 90 days re-read with the new mapping');
+  assert.equal((await repo.getKv('calls_sync')).mappingVersion, 2);
+});
+
+test('CallsSync: "Sync now" re-reads the recent windows at once, not on their timers', async () => {
+  const rows = Array.from({ length: 6 }, (_, i) => call(NOW - i * HOUR - MIN));
+  const src = fakeSource(rows);
+  const repo = fakeRepo();
+  const sync = new CallsSync({ source: src, repo, historyDays: 90, batch: 50 });
+  while (await sync.tick(NOW));
+  // 30 s later nothing is due yet (the 2h window runs every minute).
+  assert.equal(await sync.tick(NOW + 30_000), false);
+  // A call gets booked; "Sync now" makes 2h and 24h due immediately.
+  rows[0].outcome = 'Booking created'; rows[0].updatedAt = NOW + 20_000;
+  assert.deepEqual(await sync.refresh(), ['2h', '24h']);
+  while (await sync.tick(NOW + 30_000));
+  assert.equal(JSON.parse(repo.calls.get(rows[0].callId)).outcome, 'Booking created');
+  // The request survives a restart (saved in kv) and does not touch the long windows.
+  const s = await repo.getKv('calls_sync');
+  assert.ok(s.lastStart.full > 0 && s.lastStart['7d'] > 0);
+});

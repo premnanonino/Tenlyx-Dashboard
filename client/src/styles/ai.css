@@ -69,6 +69,23 @@
 .mini-stats { display: grid; grid-template-columns: repeat(3, 1fr); margin: 16px 0 0; border-top: 1px solid var(--ink); }
 .mini-stats div { padding: 10px 0 0; }
 
+/* ---- merged models panel ---------------------------------------------- */
+/* Awards strip on top; the most-used summary on the left, one chart at a
+   time on the right (picked with the tabs). */
+.models {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: 28px;
+  padding-top: 4px;
+}
+.models__lead { padding-right: 28px; border-right: 1px solid var(--rule); }
+.models__view { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.models__view > .tabs { align-self: flex-start; flex-wrap: wrap; }
+.models__chart { min-width: 0; animation: row-in 0.35s var(--ease-out) both; }
+.models__radar { display: grid; place-items: center; }
+.models .outcomes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start; }
+.models .outcomes .sub-h { margin-top: 0; }
+
 /* ---- leaderboard ------------------------------------------------------ */
 .leaderboard td { white-space: nowrap; }
 .leaderboard tbody tr { animation: row-in 0.4s var(--ease-out) both; animation-delay: var(--d); }
@@ -103,7 +120,12 @@ td.best::before { content: ''; position: absolute; left: 6px; top: 50%; width: 6
 @media (max-width: 1180px) {
   .awards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+@media (max-width: 1000px) {
+  .models { grid-template-columns: minmax(0, 1fr); }
+  .models__lead { padding-right: 0; padding-bottom: 20px; border-right: 0; border-bottom: 1px solid var(--rule); }
+}
 @media (max-width: 760px) {
+  .models .outcomes { grid-template-columns: minmax(0, 1fr); }
   .mu__stats { grid-template-columns: repeat(2, 1fr); }
   .mu__stats div:nth-child(3) { border-left: 0; padding-left: 0; }
   .blocks { grid-template-columns: repeat(25, 1fr); }

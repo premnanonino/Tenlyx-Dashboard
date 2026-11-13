@@ -6,6 +6,7 @@ import { BillingStore } from '../src/services/billingStore.js';
 import { MonthlyRollups } from '../src/services/monthlyRollups.js';
 import { CircuitBreaker } from '../src/infra/circuitBreaker.js';
 import { SingleFlight } from '../src/infra/singleFlight.js';
+import { Scheduler } from '../src/infra/scheduler.js';
 import { EventBus } from '../src/core/eventBus.js';
 
 const HOUR = 3_600_000;
@@ -95,4 +96,38 @@ test('batched sync: throttling never loses or double-counts records', async () =
   await drain(() => again.sync.backfillStep());
   assert.equal(totalCount(again.rollups), expectedAll, 'no double counting after a restart');
   fs.unlinkSync(file);
+});
+
+test('scheduler: a run that never settles times out and the job keeps running', async () => {
+  const scheduler = new Scheduler();
+  let calls = 0;
+  // First run hangs forever (like a query on a dropped connection); later runs succeed.
+  scheduler.add({ name: 'hang', everyMs: 5, jitter: 0, maxBackoffMs: 5, timeoutMs: 20, run: () => (++calls === 1 ? new Promise(() => {}) : Promise.resolve()) });
+  scheduler.start();
+  const deadline = Date.now() + 2_000;
+  while (calls < 3 && Date.now() < deadline) await new Promise((r) => setTimeout(r, 5));
+  scheduler.stop();
+  const [s] = scheduler.stats();
+  assert.ok(calls >= 3, `job stalled after ${calls} run(s)`);
+  assert.equal(s.failures, 1);
+  assert.match(s.lastError ?? 'hang timed out', /timed out/);
+});
+
+test('Scheduler.runNow: runs a backed-off job at once and resets its backoff on success', async () => {
+  const scheduler = new Scheduler();
+  let fail = true;
+  let runs = 0;
+  scheduler.add({ name: 'j', everyMs: 50, jitter: 0, maxBackoffMs: 60_000, run: async () => { runs++; if (fail) throw new Error('down'); } });
+  scheduler.start();
+  await new Promise((r) => setTimeout(r, 400)); // fails a few times, backing off
+  const job = scheduler.stats()[0];
+  assert.ok(job.consecutiveFailures >= 2, 'job is in backoff');
+  fail = false;
+  const before = runs;
+  assert.equal(scheduler.runNow('j'), true);
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(runs, before + 1, 'ran immediately, without waiting out the backoff');
+  assert.equal(scheduler.stats()[0].consecutiveFailures, 0, 'backoff reset');
+  scheduler.stop();
+  assert.equal(scheduler.runNow('j'), false, 'no-op once stopped');
 });

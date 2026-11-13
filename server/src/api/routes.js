@@ -3,6 +3,7 @@ import { cached, rateLimit } from './middleware.js';
 import { parseWindow } from '../services/analytics.js';
 import { csvCell } from '../core/csv.js';
 import { LRUCache } from '../dsa/LRUCache.js';
+import { buildAutomationRouter } from './automationRoutes.js';
 
 const clampInt = (v, lo, hi, d) => {
   const n = Number.parseInt(v, 10);
@@ -138,6 +139,7 @@ export function buildRouter(ctx) {
       outcome: q.outcome ? String(q.outcome).slice(0, 80) : null,
       booked: q.booked === 'yes' ? true : q.booked === 'no' ? false : null,
       level: q.level ? String(q.level).slice(0, 32) : null,
+      includeInternal: q.internal === '1',
       page: clampInt(q.page, 1, 100_000, 1),
       limit: clampInt(q.limit, 10, 100, 25),
     };
@@ -158,6 +160,43 @@ export function buildRouter(ctx) {
       cache.set(key, value);
       res.set('x-cache', 'MISS');
       return res.json(value);
+    } catch (err) { return next(err); }
+  });
+
+  // Repeat callers (grouped by phone). Registered before /calls/:callId.
+  const CALLER_SORTS = new Set(['calls', 'busiest', 'courses', 'attention', 'recent']);
+  r.get('/calls/callers', (req, res, next) => {
+    if (!calls) return res.json({ enabled: false, total: 0, rows: [] });
+    try {
+      const key = `callers?${new URLSearchParams(req.query)}|cv${calls.store.version}`;
+      const hit = cache.get(key);
+      if (hit !== undefined) { res.set('x-cache', 'HIT'); return res.json(hit); }
+      const sort = CALLER_SORTS.has(req.query.sort) ? req.query.sort : 'calls';
+      const minPerDay = clampInt(req.query.minPerDay, 0, 1_000, 0);
+      const value = {
+        enabled: true,
+        hydrated: calls.store.hydrated,
+        ...calls.store.repeatCallers({
+          ...parseCallsQuery(req.query),
+          minCalls: clampInt(req.query.minCalls, 1, 1_000, 2),
+          minPerDay: minPerDay || null,
+          sort,
+        }),
+      };
+      cache.set(key, value);
+      res.set('x-cache', 'MISS');
+      return res.json(value);
+    } catch (err) { return next(err); }
+  });
+
+  r.get('/calls/callers/:id', (req, res, next) => {
+    if (!calls) return res.status(404).json({ error: 'not_found' });
+    if (!/^[A-Za-z0-9_-]{16}$/.test(req.params.id)) return res.status(400).json({ error: 'invalid caller id' });
+    try {
+      const { from, to } = parseCallsQuery(req.query);
+      const caller = calls.store.caller(req.params.id, { from, to });
+      if (!caller) return res.status(404).json({ error: 'not_found' });
+      return res.json(caller);
     } catch (err) { return next(err); }
   });
 
@@ -244,6 +283,9 @@ export function buildRouter(ctx) {
       rollups: { months: rollups.months.size, highWater: rollups.meta.highWater, backfill: rollups.backfill, aiRecords: store.aiRecords.length },
     });
   });
+
+  // ---- call automation (needs a database; queues only, the worker executes) --
+  r.use('/automation', buildAutomationRouter({ automation: ctx.automation ?? null, config, limiter, logger: ctx.logger?.child?.('automation') }));
 
   // ---- live stream ------------------------------------------------------
   r.get('/stream', (req, res) => {

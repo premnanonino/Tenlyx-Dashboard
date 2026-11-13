@@ -29,8 +29,8 @@ export function defaultWindows(historyDays) {
 }
 
 export class CallsSync {
-  constructor({ source, repo, logger, historyDays = 90, batch = 1_000, windows = defaultWindows(historyDays), stateKey = 'calls_sync' }) {
-    Object.assign(this, { source, repo, logger, historyDays, batch, windows, stateKey });
+  constructor({ source, repo, logger, historyDays = 90, batch = 1_000, windows = defaultWindows(historyDays), stateKey = 'calls_sync', mappingVersion = 1 }) {
+    Object.assign(this, { source, repo, logger, historyDays, batch, windows, stateKey, mappingVersion });
     this.state = null; // { lastStart: { [window]: ms }, sweeps: [{ window, from, to, afterTs, afterId }], lastPruneAt }
     this.stats = { batches: 0, rowsRead: 0, rowsChanged: 0, sweepsDone: 0, pruned: 0, lastBatchAt: null, lastError: null };
   }
@@ -38,6 +38,14 @@ export class CallsSync {
   async #load() {
     const s = await this.repo.getKv(this.stateKey);
     this.state = { lastStart: {}, sweeps: [], lastPruneAt: 0, ...(s || {}) };
+    // The source's course/organisation mapping changed: re-read every window once
+    // (only rows whose data actually changes are written).
+    if (s && s.mappingVersion !== this.mappingVersion) {
+      this.state.lastStart = {};
+      this.state.sweeps = [];
+      this.logger?.info('call mapping changed; re-reading the call history', { from: s.mappingVersion ?? 1, to: this.mappingVersion });
+    }
+    this.state.mappingVersion = this.mappingVersion;
   }
 
   #save() { return this.repo.setKv(this.stateKey, this.state); }
@@ -89,6 +97,23 @@ export class CallsSync {
     }
     await this.#save();
     return true;
+  }
+
+  /**
+   * Manual "Sync now": make the recent windows due immediately, so the next
+   * tick re-reads the last 2 h and 24 h instead of waiting for their timers.
+   * Windows already being swept are left alone (they are in progress).
+   */
+  async refresh(windows = ['2h', '24h']) {
+    if (!this.state) await this.#load();
+    const due = [];
+    for (const name of windows) {
+      if (this.state.sweeps.some((x) => x.window === name)) continue;
+      this.state.lastStart[name] = 0;
+      due.push(name);
+    }
+    await this.#save();
+    return due;
   }
 
   /** Drop calls older than the history window from the copy. */

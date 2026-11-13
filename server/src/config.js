@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseTestNumbers } from './services/automation.js';
 
 const serverRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -27,6 +28,7 @@ function secret(name) {
 }
 
 const apiKey = secret('TELNYX_API_KEY');
+const testNumbers = parseTestNumbers(process.env.AUTOMATION_TEST_NUMBERS);
 
 // all    = API + sync in one process, in memory (local development, default)
 // api    = dashboard API only; reads PostgreSQL, never talks to Telnyx
@@ -101,6 +103,23 @@ export const config = Object.freeze({
     historyDays: num(process.env.CALLS_HISTORY_DAYS, 90),
     batch: num(process.env.CALLS_BATCH, 1_000),     // rows per production query
     tickMs: num(process.env.CALLS_TICK_MS, 2_000),  // at most one batch per tick
+    // Repeat callers: internal/test callers are hidden by default (email domain or number list).
+    internalDomains: list(process.env.CALLS_INTERNAL_DOMAINS, ['courserev.ai']),
+    internalNumbers: list(process.env.CALLS_INTERNAL_NUMBERS, []),
+    highVolumePerDay: num(process.env.CALLS_HIGH_VOLUME_PER_DAY, 20), // flag likely test lines / dialers
+  }),
+  // Call Automation: needs a database. Only numbers on AUTOMATION_TEST_NUMBERS can
+  // ever be dialled ("+E164=label,..."); production numbers are rejected server-side.
+  automation: Object.freeze({
+    testNumbers: Object.freeze(testNumbers.numbers.map((n) => Object.freeze(n))),
+    invalidTestNumbers: Object.freeze(testNumbers.invalid),
+    defaultTimeoutSec: num(process.env.AUTOMATION_RUN_TIMEOUT_SEC, 300),
+    maxTimeoutSec: num(process.env.AUTOMATION_MAX_RUN_TIMEOUT_SEC, 900),
+    concurrency: Math.max(1, num(process.env.AUTOMATION_CONCURRENCY, 1)),
+    maxActiveRuns: num(process.env.AUTOMATION_MAX_ACTIVE_RUNS, 100), // queued + running, across everyone
+    maxRunsPerRequest: 50,
+    queueTimeoutMs: num(process.env.AUTOMATION_QUEUE_TIMEOUT_MIN, 60) * 60_000, // queued this long = no worker
+    tickMs: 2_000,
   }),
   reports: Object.freeze({
     file: process.env.REPORTS_FILE || path.join(serverRoot, 'data', 'rollups.json'),
